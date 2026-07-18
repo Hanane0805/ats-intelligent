@@ -1,32 +1,24 @@
 'use client';
 
 import React from 'react';
-import Navbar from '../../components/layout/Navbar';
-import Sidebar from '../../components/layout/Sidebar';
+import Sidebar from '../../components/layout/Sidebar'; 
+import Topbar from '../../components/layout/Navbar';
+import { NotificationProvider } from '../../context/NotificationContext';
+import NotificationCenter from '../../components/NotificationCenter';
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-background text-foreground flex transition-colors duration-200">
-      
-      {/* Sidebar Navigation Drawer */}
-      <Sidebar />
-
-      {/* Primary Workflow Layout Shell */}
-      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        
-        {/* Navigation Headspace header layout */}
-        <Navbar />
-
-        {/* Dynamic Inner Component Workspace */}
-        <main className="flex-1 p-6 overflow-y-auto bg-muted/30">
-          {children}
-        </main>
-        
+    <NotificationProvider>
+      <div className="flex h-screen overflow-hidden">
+        <Sidebar />
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <Topbar />
+          <main className="flex-1 overflow-y-auto bg-slate-50 relative">
+            <NotificationCenter />
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </NotificationProvider>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Bell, Search } from 'lucide-react';
 import { auth, User } from '../../services/api';
 
@@ -26,9 +27,13 @@ export default function Navbar() {
 
       {/* User Session Interface Controls */}
       <div className="flex items-center gap-5">
-        <button className="text-muted-foreground hover:text-foreground p-1.5 rounded-lg hover:bg-muted/50 transition-colors">
+        {/* Updated: Changed <button> to <Link> to enable navigation */}
+        <Link 
+          href="/notifications" 
+          className="text-muted-foreground hover:text-foreground p-1.5 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+        >
           <Bell className="w-5 h-5" />
-        </button>
+        </Link>
         
         <div className="h-9 w-px bg-border" />
 
