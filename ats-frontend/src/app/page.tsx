@@ -37,7 +37,7 @@ export default function LoginPage() {
       await api.login({ email, password });
       window.location.href = '/dashboard';
     } catch (err: any) {
-      setError(err.message || 'Login failed. Please check your credentials.');
+      setError(err.message || 'Email ou mot de passe incorrect.');
     } finally {
       setIsLoading(false);
     }

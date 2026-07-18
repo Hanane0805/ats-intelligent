@@ -1,128 +1,270 @@
 'use client';
 
-import React, { useState } from 'react';
-import Link from 'next/link';
-import { 
-  Search, Plus, Filter, Eye, Pencil, Trash2, X, MapPin 
-} from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, Plus, Briefcase, Loader2, X, AlertCircle } from 'lucide-react';
+import { api, FichePoste, auth } from '../../../services/api';
 
-const positions = [
-  { id: 1, title: 'Senior Frontend Developer', dept: 'Engineering', exp: '5+ years', loc: 'New York / Remote', apps: '24 applicants', status: 'Active', posted: 'Jan 10, 2025' },
-  { id: 2, title: 'Backend Engineer (Java/Spring)', dept: 'Engineering', exp: '4+ years', loc: 'San Francisco', apps: '18 applicants', status: 'Active', posted: 'Jan 8, 2025' },
-  { id: 3, title: 'Product Manager', dept: 'Product', exp: '5+ years', loc: 'Chicago / Remote', apps: '31 applicants', status: 'Active', posted: 'Jan 5, 2025' },
-  { id: 4, title: 'DevOps Engineer', dept: 'Infrastructure', exp: '3+ years', loc: 'Austin, TX', apps: '12 applicants', status: 'Active', posted: 'Dec 28, 2024' },
-  { id: 5, title: 'Data Scientist', dept: 'Analytics', exp: '4+ years', loc: 'Seattle / Remote', apps: '27 applicants', status: 'Active', posted: 'Dec 20, 2024' },
-  { id: 6, title: 'UX/UI Designer', dept: 'Design', exp: '3+ years', loc: 'Remote', apps: '19 applicants', status: 'Closed', posted: 'Dec 15, 2024' },
-  { id: 7, title: 'Mobile Developer (React Native)', dept: 'Engineering', exp: '3+ years', loc: 'Remote', apps: '15 applicants', status: 'Active', posted: 'Dec 10, 2024' },
-];
+export default function JobPositionsPage() {
+  const [activeTab, setActiveTab] = useState('All');
+  const [jobs, setJobs] = useState<FichePoste[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
 
-function JobsPage() {
-  const [filter, setFilter] = useState('All');
+  // Modal state
+  const [showModal, setShowModal] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [form, setForm] = useState({ titre: '', description: '' });
 
-  // Logic to filter the positions based on status
-  const filteredPositions = positions.filter((job) => {
-    if (filter === 'All') return true;
-    return job.status === filter;
+  const currentUser = auth.getUser();
+
+  useEffect(() => {
+    fetchJobs();
+  }, []);
+
+  const fetchJobs = () => {
+    setLoading(true);
+    api.getJobs()
+      .then(setJobs)
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false));
+  };
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.titre.trim()) return;
+    if (!currentUser?.id) {
+      setCreateError("Utilisateur non connecté.");
+      return;
+    }
+    setCreating(true);
+    setCreateError('');
+    try {
+      await api.createJob({
+        titre: form.titre,
+        description: form.description,
+        recruteurId: currentUser.id,
+      });
+      setShowModal(false);
+      setForm({ titre: '', description: '' });
+      fetchJobs();
+    } catch (err: any) {
+      setCreateError(err.message || 'Erreur lors de la création.');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const filtered = jobs.filter(j => {
+    const matchesTab = activeTab === 'All' ||
+      (activeTab === 'Active' && j.statut === 'OUVERT') ||
+      (activeTab === 'Closed' && j.statut === 'FERME');
+    const matchesSearch = j.titre.toLowerCase().includes(search.toLowerCase());
+    return matchesTab && matchesSearch;
   });
 
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return '—';
+    return new Date(dateStr).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
   return (
-    <div className="p-8 bg-slate-50 min-h-screen">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-8">
+    <div className="flex flex-col gap-6 max-w-[1200px] mx-auto w-full pb-10">
+      <div className="flex justify-between items-center mt-2">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Job Positions</h1>
-          <p className="text-slate-500 text-sm">Manage and track all open positions</p>
+          <h1 className="text-2xl font-bold text-gray-900">Job Positions</h1>
+          <p className="text-sm text-gray-500 mt-1">{jobs.length} position{jobs.length !== 1 ? 's' : ''} total</p>
         </div>
-        
-        {/* Navigation Link for Create Position */}
-        <Link 
-          href="/jobs/create" 
-          className="bg-[#1e3a8a] text-white px-4 py-2.5 rounded-lg font-medium text-sm hover:bg-[#1e3a8a]/90 flex items-center gap-2 transition-colors"
+        <button
+          onClick={() => { setShowModal(true); setCreateError(''); }}
+          className="bg-[#1e3a8a] hover:bg-blue-800 text-white px-5 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm"
         >
           <Plus className="w-4 h-4" /> Create Position
-        </Link>
+        </button>
       </div>
 
-      {/* Search & Filter Bar */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6 flex flex-wrap gap-4 items-center justify-between">
-        <div className="relative flex-1 min-w-[300px]">
-          <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-          <input 
-            type="text" 
-            placeholder="Search positions..." 
-            className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
-          />
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        {/* Filters Bar */}
+        <div className="p-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
+          <div className="relative max-w-md w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search positions..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            {['All', 'Active', 'Closed'].map(tab => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  activeTab === tab
+                  ? 'bg-[#1e3a8a] text-white'
+                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-transparent hover:border-gray-200'
+                }`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {['All', 'Active', 'Closed', 'Draft'].map((f) => (
-            <button 
-              key={f} 
-              onClick={() => setFilter(f)}
-              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${filter === f ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              {f}
-            </button>
-          ))}
-          <button className="flex items-center gap-2 px-4 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">
-            <Filter className="w-4 h-4" /> Filters
-          </button>
-        </div>
-      </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="text-xs uppercase text-slate-500 border-b border-slate-100">
-              <th className="px-6 py-4 font-medium">Position Title</th>
-              <th className="px-6 py-4 font-medium">Department</th>
-              <th className="px-6 py-4 font-medium">Experience</th>
-              <th className="px-6 py-4 font-medium">Location</th>
-              <th className="px-6 py-4 font-medium">Candidates</th>
-              <th className="px-6 py-4 font-medium">Status</th>
-              <th className="px-6 py-4 font-medium">Posted</th>
-              <th className="px-6 py-4 font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filteredPositions.length > 0 ? (
-              filteredPositions.map((job) => (
-                <tr key={job.id} className="hover:bg-slate-50/50 text-sm">
-                  <td className="px-6 py-4 font-medium text-slate-900">{job.title}</td>
-                  <td className="px-6 py-4 text-slate-600">{job.dept}</td>
-                  <td className="px-6 py-4 text-slate-600">{job.exp}</td>
-                  <td className="px-6 py-4 text-slate-600 flex items-center gap-1">
-                    <MapPin className="w-3 h-3 text-slate-400" /> {job.loc}
-                  </td>
-                  <td className="px-6 py-4 text-slate-600">{job.apps}</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2.5 py-1 rounded-full text-[11px] font-medium ${job.status === 'Active' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                      ● {job.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-slate-500">{job.posted}</td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2 text-slate-400">
-                      <button className="hover:text-slate-600"><Eye className="w-4 h-4" /></button>
-                      <button className="hover:text-slate-600"><Pencil className="w-4 h-4" /></button>
-                      <button className="hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
-                      <button className="hover:text-red-600"><X className="w-4 h-4" /></button>
-                    </div>
-                  </td>
+        {/* States */}
+        {loading && (
+          <div className="flex items-center justify-center py-20 gap-3 text-gray-500">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span className="text-sm font-medium">Chargement des postes...</span>
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="p-6 text-center text-rose-600 text-sm font-medium bg-rose-50 border-b border-rose-100">
+            Erreur : {error}
+          </div>
+        )}
+
+        {!loading && !error && filtered.length === 0 && (
+          <div className="py-20 text-center">
+            <Briefcase className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-500 font-medium">Aucun poste trouvé.</p>
+            <p className="text-gray-400 text-sm mt-1">Créez votre premier poste en cliquant sur &ldquo;Create Position&rdquo;.</p>
+          </div>
+        )}
+
+        {/* Table */}
+        {!loading && !error && filtered.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[900px]">
+              <thead>
+                <tr className="bg-white border-b border-gray-100">
+                  <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider">Position Title</th>
+                  <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider">Recruiter</th>
+                  <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider">Description</th>
+                  <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider">Posted</th>
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={8} className="px-6 py-8 text-center text-slate-500">
-                  No positions found for this filter.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {filtered.map((job) => (
+                  <tr key={job.id} className="hover:bg-gray-50/50 transition-colors group cursor-pointer bg-white">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-blue-50/50 flex items-center justify-center border border-blue-100 flex-shrink-0 text-[#1e3a8a]">
+                          <Briefcase className="w-5 h-5" />
+                        </div>
+                        <span className="font-bold text-gray-900 group-hover:text-[#1e3a8a] transition-colors">{job.titre}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm font-medium text-gray-600">{job.recruteurNom || '—'}</td>
+                    <td className="px-6 py-4 text-sm font-medium text-gray-500 max-w-[220px] truncate">
+                      {job.description || '—'}
+                    </td>
+                    <td className="px-6 py-4">
+                      {job.statut === 'OUVERT' ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-600 border border-emerald-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Active
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-gray-100 text-gray-500 border border-gray-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span> Closed
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-sm font-medium text-gray-400 whitespace-nowrap">
+                      {formatDate(job.dateCreation)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
+
+      {/* Create Position Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Create New Position</h2>
+                <p className="text-sm text-gray-500 mt-0.5">Fill in the details for the new job opening</p>
+              </div>
+              <button
+                onClick={() => setShowModal(false)}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleCreate} className="p-6 flex flex-col gap-5">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-bold text-gray-700">
+                  Job Title <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={form.titre}
+                  onChange={e => setForm(f => ({ ...f, titre: e.target.value }))}
+                  placeholder="e.g. Senior Software Engineer"
+                  required
+                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#1e3a8a] transition-all"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-bold text-gray-700">Description</label>
+                <textarea
+                  value={form.description}
+                  onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                  placeholder="Describe the role, responsibilities, and requirements..."
+                  rows={4}
+                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#1e3a8a] transition-all resize-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 px-3 py-2.5 bg-blue-50 border border-blue-100 rounded-lg">
+                <Briefcase className="w-4 h-4 text-[#1e3a8a] flex-shrink-0" />
+                <p className="text-xs font-medium text-[#1e3a8a]">
+                  Created by: <span className="font-bold">{currentUser?.prenom} {currentUser?.nom}</span>
+                </p>
+              </div>
+
+              {createError && (
+                <div className="flex items-center gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-600 text-sm font-medium">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  {createError}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creating || !form.titre.trim()}
+                  className="flex-1 bg-[#1e3a8a] hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors"
+                >
+                  {creating ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating...</> : <><Plus className="w-4 h-4" /> Create Position</>}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
-export default JobsPage;

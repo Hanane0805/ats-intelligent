@@ -1,9 +1,16 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Bell, Search } from 'lucide-react';
+import { auth, User } from '../../services/api';
 
 export default function Navbar() {
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    setUser(auth.getUser());
+  }, []);
+
   return (
     <div className="h-20 bg-card border-b border-border flex items-center justify-between px-8 flex-shrink-0 transition-colors duration-200">
       
@@ -27,7 +34,7 @@ export default function Navbar() {
 
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center font-bold text-sm shadow-sm">
-            AD
+            {user ? `${user.nom?.[0] || ''}${user.prenom?.[0] || ''}`.toUpperCase() : '??'}
           </div>
         </div>
       </div>

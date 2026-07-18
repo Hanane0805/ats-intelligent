@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
@@ -8,6 +8,7 @@ import {
   History, Settings, Shield, UserCog, ClipboardList, LogOut, Bot,
   Activity
 } from 'lucide-react';
+import { auth, User } from '../../services/api';
 
 const recruitingLinks = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -17,6 +18,7 @@ const recruitingLinks = [
   { name: 'Rankings', href: '/rankings', icon: BarChart2 },
   { name: 'History', href: '/history', icon: History },
   { name: 'Statistics', href: '/stats', icon: Activity },
+  { name: 'Profile', href: '/profil', icon: UserCog },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
@@ -29,6 +31,12 @@ const adminLinks = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    setUser(auth.getUser());
+  }, []);
+
 
   return (
     <aside className="w-64 bg-[#1e3a8a] text-blue-100 flex flex-col min-h-screen flex-shrink-0 shadow-xl">
@@ -72,13 +80,20 @@ export default function Sidebar() {
       {/* Footer Profile */}
       <div className="p-4 border-t border-[#2d46a8]">
         <div className="flex items-center gap-3 px-2 mb-4">
-          <div className="w-9 h-9 rounded-lg bg-emerald-500 flex items-center justify-center text-white font-bold text-sm">RM</div>
+          <div className="w-9 h-9 rounded-lg bg-emerald-500 flex items-center justify-center text-white font-bold text-sm">
+            {user ? `${user.nom?.[0] || ''}${user.prenom?.[0] || ''}`.toUpperCase() : '??'}
+          </div>
           <div>
-            <p className="text-white text-sm font-medium">Rachel Morgan</p>
-            <p className="text-blue-300 text-[11px]">HR Recruiter</p>
+            <p className="text-white text-sm font-medium">
+              {user ? `${user.prenom} ${user.nom}` : 'Utilisateur'}
+            </p>
+            <p className="text-blue-300 text-[11px]">{user ? user.role : 'HR Recruiter'}</p>
           </div>
         </div>
-        <button className="flex items-center gap-2 text-blue-300 hover:text-white px-2 py-2 text-sm w-full transition-colors">
+        <button 
+          onClick={() => auth.clearSession() || (window.location.href = '/')}
+          className="flex items-center gap-2 text-blue-300 hover:text-white px-2 py-2 text-sm w-full transition-colors"
+        >
           <LogOut className="w-4 h-4" /> Logout
         </button>
       </div>

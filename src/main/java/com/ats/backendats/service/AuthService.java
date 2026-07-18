@@ -2,7 +2,9 @@ package com.ats.backendats.service;
 
 import com.ats.backendats.config.JwtService;
 import com.ats.backendats.dto.request.LoginRequest;
+import com.ats.backendats.dto.request.RegisterRecruteurRequest;
 import com.ats.backendats.dto.response.AuthResponse;
+import com.ats.backendats.model.RecruteurRH;
 import com.ats.backendats.repository.AdministrateurRHRepository;
 import com.ats.backendats.repository.RecruteurRHRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -40,5 +42,23 @@ public class AuthService {
         }
 
         throw new RuntimeException("Email ou mot de passe incorrect");
+    }
+
+    public AuthResponse register(RegisterRecruteurRequest request) {
+        if (recruteurRepository.findByEmail(request.getEmail()).isPresent() ||
+            administrateurRepository.findByEmail(request.getEmail()).isPresent()) {
+            throw new RuntimeException("Un compte avec cet email existe déjà");
+        }
+
+        RecruteurRH recruteur = new RecruteurRH();
+        recruteur.setNom(request.getNom());
+        recruteur.setPrenom(request.getPrenom());
+        recruteur.setEmail(request.getEmail());
+        recruteur.setMotDePasse(passwordEncoder.encode(request.getMotDePasse()));
+        recruteur.setDepartement(request.getDepartement());
+        recruteur = recruteurRepository.save(recruteur);
+
+        String token = jwtService.generateToken(recruteur.getEmail(), "RECRUTEUR", 86400000L);
+        return new AuthResponse(token, "RECRUTEUR", recruteur.getId(), recruteur.getEmail(), recruteur.getNom(), recruteur.getPrenom());
     }
 }

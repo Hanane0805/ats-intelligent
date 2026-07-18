@@ -1,18 +1,34 @@
 'use client';
 
 import { useState } from 'react';
-import { Mail, Lock, User, Loader2, ArrowRight, LayoutGrid, Activity, ChevronLeft } from 'lucide-react';
+import { Mail, Lock, User, Loader2, ArrowRight, LayoutGrid, Activity, ChevronLeft, Building2 } from 'lucide-react';
 import Link from 'next/link';
+import { api } from '../../services/api';
 
 export default function SignupPage() {
-  const [formData, setFormData] = useState({ name: '', email: '', password: '' });
+  const [formData, setFormData] = useState({ nom: '', prenom: '', email: '', password: '', departement: 'RH' });
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => setIsLoading(false), 2000);
+    setError('');
+
+    try {
+      await api.register({
+        nom: formData.nom,
+        prenom: formData.prenom,
+        email: formData.email,
+        password: formData.password,
+        departement: formData.departement,
+      });
+      window.location.href = '/dashboard';
+    } catch (err: any) {
+      setError(err.message || "Erreur lors de la création du compte.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -28,44 +44,82 @@ export default function SignupPage() {
             <h1 className="text-xl font-medium tracking-tight leading-none">ATS Intelligent</h1>
             <p className="text-[10px] text-slate-300 font-normal mt-1 uppercase tracking-wider flex items-center gap-1">
               <Activity className="w-3 h-3 text-emerald-400 animate-pulse" />
-              Join the ecosystem
+              Rejoignez la plateforme
             </p>
           </div>
         </div>
 
         <div className="text-center max-w-md space-y-6 z-30">
-          <h2 className="text-4xl font-bold tracking-tight">Start Hiring Smarter</h2>
+          <h2 className="text-4xl font-bold tracking-tight">Recrutez plus intelligemment</h2>
           <p className="text-base text-slate-200/80 leading-relaxed">
-            Create your account to access AI-powered candidate screening, automated ranking, and real-time hiring insights.
+            Créez votre compte pour accéder à la sélection de candidats pilotée par l'IA, au classement automatisé, et aux insights de recrutement en temps réel.
           </p>
+        </div>
+
+        <div className="flex justify-between w-full max-w-md text-center pt-6 border-t border-white/10 z-30">
+          <div className="flex-1 space-y-0.5">
+            <p className="text-2xl font-extrabold text-white tracking-tight">1 247</p>
+            <p className="text-xs text-slate-300 font-normal">CVs Analysés</p>
+          </div>
+          <div className="flex-1 space-y-0.5 border-x border-white/10 px-2">
+            <p className="text-2xl font-extrabold text-emerald-400 tracking-tight">94.2%</p>
+            <p className="text-xs text-slate-300 font-normal">Précision IA</p>
+          </div>
+          <div className="flex-1 space-y-0.5">
+            <p className="text-2xl font-extrabold text-amber-400 tracking-tight">3x</p>
+            <p className="text-xs text-slate-300 font-normal">Plus Rapide</p>
+          </div>
         </div>
       </div>
 
       {/* RIGHT SIDE: SIGNUP FORM */}
       <div className="flex-1 flex flex-col justify-center items-center p-6 sm:p-16 bg-background">
-        <div className="w-full max-w-md space-y-6 bg-card p-8 sm:p-10 rounded-2xl border border-border shadow-sm">
+        <div className="w-full max-w-md space-y-6 bg-card p-8 sm:p-10 rounded-2xl border border-border shadow-sm relative">
           
+          {isLoading && (
+            <div className="absolute inset-0 bg-card/75 backdrop-blur-[1px] z-50 rounded-2xl flex items-center justify-center">
+              <Loader2 className="animate-spin h-10 w-10 text-primary" />
+            </div>
+          )}
+
           <div className="mb-4">
             <Link href="/" className="inline-flex items-center text-xs text-muted-foreground hover:text-foreground transition-colors mb-4">
-              <ChevronLeft className="w-3 h-3 mr-1" /> Back to login
+              <ChevronLeft className="w-3 h-3 mr-1" /> Retour à la connexion
             </Link>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Create your account</h1>
-            <p className="text-sm text-muted-foreground mt-1">Get started with ATS Intelligent today.</p>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Créer votre compte</h1>
+            <p className="text-sm text-muted-foreground mt-1">Commencez à utiliser ATS Intelligent aujourd&apos;hui.</p>
           </div>
 
+          {error && (
+            <div className="p-3.5 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs font-medium text-center">
+              {error}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Name Field */}
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                <User className="h-4 w-4 text-muted-foreground" />
+            {/* First + Last Name Row */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                  <User className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <input
+                  type="text"
+                  required
+                  placeholder="Prénom"
+                  className="block w-full pl-11 pr-3.5 py-2.5 border border-border rounded-lg bg-input-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  onChange={(e) => setFormData({...formData, prenom: e.target.value})}
+                />
               </div>
-              <input
-                type="text"
-                required
-                className="block w-full pl-11 pr-3.5 py-2.5 border border-border rounded-lg bg-input-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="Full Name"
-                onChange={(e) => setFormData({...formData, name: e.target.value})}
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  required
+                  placeholder="Nom"
+                  className="block w-full pl-4 pr-3.5 py-2.5 border border-border rounded-lg bg-input-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  onChange={(e) => setFormData({...formData, nom: e.target.value})}
+                />
+              </div>
             </div>
 
             {/* Email Field */}
@@ -77,8 +131,21 @@ export default function SignupPage() {
                 type="email"
                 required
                 className="block w-full pl-11 pr-3.5 py-2.5 border border-border rounded-lg bg-input-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="name@company.com"
+                placeholder="email@entreprise.com"
                 onChange={(e) => setFormData({...formData, email: e.target.value})}
+              />
+            </div>
+
+            {/* Department Field */}
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                <Building2 className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <input
+                type="text"
+                placeholder="Département (ex: RH)"
+                className="block w-full pl-11 pr-3.5 py-2.5 border border-border rounded-lg bg-input-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                onChange={(e) => setFormData({...formData, departement: e.target.value})}
               />
             </div>
 
@@ -91,7 +158,7 @@ export default function SignupPage() {
                 type="password"
                 required
                 className="block w-full pl-11 pr-3.5 py-2.5 border border-border rounded-lg bg-input-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="Create a password"
+                placeholder="Créer un mot de passe"
                 onChange={(e) => setFormData({...formData, password: e.target.value})}
               />
             </div>
@@ -101,19 +168,10 @@ export default function SignupPage() {
               disabled={isLoading}
               className="w-full flex justify-center items-center py-2.5 px-4 rounded-lg text-sm font-medium bg-primary text-white hover:opacity-90 disabled:opacity-50 transition-all"
             >
-              {isLoading ? <Loader2 className="animate-spin w-4 h-4" /> : 'Create Account'}
+              {isLoading ? <Loader2 className="animate-spin w-4 h-4" /> : 'Créer mon compte'}
               {!isLoading && <ArrowRight className="ml-2 h-4 w-4" />}
             </button>
           </form>
-
-          <div className="relative py-2">
-            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border"></div></div>
-            <div className="relative flex justify-center text-xs"><span className="px-3 bg-card text-muted-foreground font-medium">Or</span></div>
-          </div>
-
-          <button className="w-full flex justify-center items-center py-2.5 px-4 border border-border rounded-lg text-sm font-medium bg-card text-foreground hover:bg-muted/40 transition-all">
-            Sign up with Google
-          </button>
         </div>
       </div>
     </div>

@@ -10,6 +10,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell 
 } from 'recharts';
 
+import { api, DashboardStats } from '../../../services/api';
+
 // --- Data for Chart & Activity ---
 const barData = [
   { name: '41-60', score: 12 },
@@ -47,7 +49,12 @@ const StatCard = ({ title, value, sub, trend, trendValue, icon: Icon, colorClass
 
 export default function DashboardPage() {
   const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  
+  useEffect(() => {
+    setMounted(true);
+    api.getDashboardStats().then(setStats).catch(console.error);
+  }, []);
 
   return (
     <div className="p-8 space-y-6 bg-background min-h-screen">
@@ -56,7 +63,7 @@ export default function DashboardPage() {
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground text-sm">Welcome back, Rachel. Here's what's happening today.</p>
+          <p className="text-muted-foreground text-sm">Welcome back. Here&apos;s what&apos;s happening today.</p>
         </div>
         <button className="bg-primary text-white px-4 py-2 rounded-lg font-medium text-sm hover:opacity-90 flex items-center">
           <Activity className="w-4 h-4 mr-2" /> Quick Analyze
@@ -65,13 +72,14 @@ export default function DashboardPage() {
 
       {/* Metrics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <StatCard title="JOB POSITIONS" value="8" sub="6 active" trend="up" trendValue="14% vs last month" icon={Briefcase} colorClass="bg-indigo-100 text-indigo-600" />
-        <StatCard title="TOTAL CANDIDATES" value="146" sub="12 new this week" trend="up" trendValue="8% vs last month" icon={Users} colorClass="bg-purple-100 text-purple-600" />
-        <StatCard title="CVS ANALYZED" value="1,247" sub="powered by Gemini AI" trend="up" trendValue="22% vs last month" icon={FileText} colorClass="bg-emerald-100 text-emerald-600" />
-        <StatCard title="AVG MATCH SCORE" value="81.2%" sub="3.4pts this month" trend="up" trendValue="4% vs last month" icon={Target} colorClass="bg-orange-100 text-orange-600" />
-        <StatCard title="PENDING ANALYSES" value="23" sub="in queue" trend="down" trendValue="5% vs last month" icon={Clock} colorClass="bg-amber-100 text-amber-600" />
-        <StatCard title="SUCCESSFUL HIRES" value="69" sub="this quarter" trend="up" trendValue="11% vs last month" icon={Trophy} colorClass="bg-cyan-100 text-cyan-600" />
+        <StatCard title="JOB POSITIONS" value={stats ? stats.totalPostes : '—'} sub={`${stats ? stats.postesActifs : '—'} active`} trend="up" trendValue="Live" icon={Briefcase} colorClass="bg-indigo-100 text-indigo-600" />
+        <StatCard title="TOTAL CANDIDATES" value={stats ? stats.totalCandidats : '—'} sub="in database" trend="up" trendValue="Live" icon={Users} colorClass="bg-purple-100 text-purple-600" />
+        <StatCard title="CANDIDATURES" value={stats ? stats.totalCandidatures : '—'} sub="all submissions" trend="up" trendValue="Live" icon={FileText} colorClass="bg-emerald-100 text-emerald-600" />
+        <StatCard title="AVG MATCH SCORE" value={stats ? `${stats.scoreMoyenAnalyse.toFixed(1)}%` : '—'} sub="across all analyses" trend="up" trendValue="Live" icon={Target} colorClass="bg-orange-100 text-orange-600" />
+        <StatCard title="PENDING" value={stats ? stats.candidaturesEnAttente : '—'} sub="awaiting review" trend="down" trendValue="Live" icon={Clock} colorClass="bg-amber-100 text-amber-600" />
+        <StatCard title="ACCEPTED" value={stats ? stats.candidaturesAcceptees : '—'} sub="successful hires" trend="up" trendValue="Live" icon={Trophy} colorClass="bg-cyan-100 text-cyan-600" />
       </div>
+
 
       {/* Main Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

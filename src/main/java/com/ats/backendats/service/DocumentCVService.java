@@ -1,5 +1,6 @@
 package com.ats.backendats.service;
 
+import com.ats.backendats.dto.response.CandidatExtractionResponse;
 import com.ats.backendats.dto.response.DocumentCVResponse;
 import com.ats.backendats.exception.BadRequestException;
 import com.ats.backendats.exception.ResourceNotFoundException;
@@ -8,7 +9,9 @@ import com.ats.backendats.model.DocumentCV;
 import com.ats.backendats.repository.CandidatRepository;
 import com.ats.backendats.repository.CVChunkRepository;
 import com.ats.backendats.repository.DocumentCVRepository;
-import lombok.RequiredArgsConstructor;
+import org.apache.tika.Tika;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.converter.BeanOutputConverter;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -16,15 +19,28 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
 public class DocumentCVService {
 
     private final DocumentCVRepository documentCVRepository;
     private final CandidatRepository candidatRepository;
     private final CVChunkRepository cvChunkRepository;
+    private final ChatClient chatClient;
+    private final Tika tika;
+
+    public DocumentCVService(DocumentCVRepository documentCVRepository,
+                             CandidatRepository candidatRepository,
+                             CVChunkRepository cvChunkRepository,
+                             ChatClient.Builder chatClientBuilder) {
+        this.documentCVRepository = documentCVRepository;
+        this.candidatRepository = candidatRepository;
+        this.cvChunkRepository = cvChunkRepository;
+        this.chatClient = chatClientBuilder.build();
+        this.tika = new Tika();
+    }
 
     public List<DocumentCVResponse> getAllDocuments() {
         return documentCVRepository.findAll().stream()
@@ -51,13 +67,133 @@ public class DocumentCVService {
         if (file.isEmpty()) {
             throw new BadRequestException("Le fichier est vide");
         }
+        
+        return processAndSaveDocument(candidat, file);
+    }
+
+    public DocumentCVResponse analyzeAndCreateCandidate(MultipartFile file) {
+        if (file.isEmpty()) {
+            throw new BadRequestException("Le fichier est vide");
+        }
+
+        String texteBrut;
+        try {
+            texteBrut = tika.parseToString(file.getInputStream());
+            if (texteBrut == null || texteBrut.trim().isEmpty()) {
+                texteBrut = "";
+            }
+        } catch (Exception e) {
+            throw new BadRequestException("Erreur lors de la lecture du fichier : " + e.getMessage());
+        }
+
+        // Tenter l'extraction IA AVANT la transaction (évite le rollback sur erreur 429)
+        CandidatExtractionResponse extraction = tryExtractWithAI(texteBrut, file.getOriginalFilename());
+
+        // Sauvegarder dans une transaction séparée
+        return saveCandidatAndDocument(extraction, texteBrut, file.getOriginalFilename());
+    }
+
+    @Transactional
+    public DocumentCVResponse saveCandidatAndDocument(CandidatExtractionResponse extraction, String texteBrut, String filename) {
+        // Chercher un candidat existant ou le créer
+        Optional<Candidat> existingCandidat = (extraction.getEmail() != null && !extraction.getEmail().isEmpty())
+                ? candidatRepository.findByEmail(extraction.getEmail())
+                : Optional.empty();
+
+        Candidat candidat;
+        if (existingCandidat.isPresent()) {
+            candidat = existingCandidat.get();
+            if (extraction.getNom() != null) candidat.setNom(extraction.getNom());
+            if (extraction.getPrenom() != null) candidat.setPrenom(extraction.getPrenom());
+            candidat = candidatRepository.save(candidat);
+        } else {
+            candidat = new Candidat();
+            candidat.setNom(extraction.getNom() != null ? extraction.getNom() : "Candidat");
+            candidat.setPrenom(extraction.getPrenom() != null ? extraction.getPrenom() : "Import");
+            String email = (extraction.getEmail() != null && !extraction.getEmail().isEmpty())
+                    ? extraction.getEmail()
+                    : "candidat-" + System.currentTimeMillis() + "@import.local";
+            candidat.setEmail(email);
+            candidat = candidatRepository.save(candidat);
+        }
+
+        // Sauvegarder le DocumentCV
+        DocumentCV document = new DocumentCV();
+        document.setCandidat(candidat);
+        document.setNomFichier(filename);
+        document.setDateUpload(LocalDate.now());
+        document.setTexteBrut(texteBrut);
+        document = documentCVRepository.save(document);
+
+        return toResponse(document);
+    }
+
+    /**
+     * Tente d'extraire les infos du CV avec l'IA.
+     * Si l'IA échoue (quota, erreur réseau...), utilise une extraction basique par regex.
+     */
+    private CandidatExtractionResponse tryExtractWithAI(String texteBrut, String filename) {
+        try {
+            BeanOutputConverter<CandidatExtractionResponse> converter = new BeanOutputConverter<>(CandidatExtractionResponse.class);
+            String prompt = "Tu es un assistant de recrutement. Extrait les informations personnelles du candidat à partir du texte de CV suivant. " +
+                    "Si une information n'est pas trouvée, laisse le champ vide ou null.\n\n" +
+                    "CV Texte:\n" + (texteBrut.length() > 3000 ? texteBrut.substring(0, 3000) : texteBrut) +
+                    "\n\n" + converter.getFormat();
+
+            String response = chatClient.prompt().user(prompt).call().content();
+            CandidatExtractionResponse result = converter.convert(response);
+            if (result != null) return result;
+        } catch (Throwable e) {
+            // Fallback si l'IA échoue (quota 429, NonTransientAiException, réseau, etc.)
+            System.err.println("[CV Analysis] IA indisponible, fallback regex: " + e.getMessage());
+        }
+
+        // Fallback : extraction par regex
+        return extractWithRegex(texteBrut, filename);
+    }
+
+    /**
+     * Extraction basique par regex : email depuis le texte, nom depuis le nom du fichier.
+     */
+    private CandidatExtractionResponse extractWithRegex(String texteBrut, String filename) {
+        CandidatExtractionResponse result = new CandidatExtractionResponse();
+
+        // Extraire l'email
+        java.util.regex.Pattern emailPattern = java.util.regex.Pattern.compile(
+                "[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}");
+        java.util.regex.Matcher matcher = emailPattern.matcher(texteBrut);
+        if (matcher.find()) {
+            result.setEmail(matcher.group());
+        }
+
+        // Extraire nom/prénom depuis le nom du fichier (ex: "John_Doe_CV.pdf" -> "John" "Doe")
+        if (filename != null) {
+            String base = filename.replaceAll("(?i)[\\.](pdf|doc|docx)$", "")
+                    .replaceAll("[_\\-]", " ").trim();
+            // Supprimer mots génériques
+            base = base.replaceAll("(?i)(cv|resume|curriculum|vitae)", "").trim();
+            String[] parts = base.split("\\s+");
+            if (parts.length >= 2) {
+                result.setPrenom(parts[0]);
+                result.setNom(parts[1]);
+            } else if (parts.length == 1 && !parts[0].isEmpty()) {
+                result.setNom(parts[0]);
+                result.setPrenom("Import");
+            }
+        }
+
+        return result;
+    }
+
+
+    private DocumentCVResponse processAndSaveDocument(Candidat candidat, MultipartFile file) {
         DocumentCV document = new DocumentCV();
         document.setCandidat(candidat);
         document.setNomFichier(file.getOriginalFilename());
         document.setDateUpload(LocalDate.now());
         try {
-            document.setTexteBrut(new String(file.getBytes()));
-        } catch (IOException e) {
+            document.setTexteBrut(tika.parseToString(file.getInputStream()));
+        } catch (Exception e) {
             throw new BadRequestException("Erreur lors de la lecture du fichier : " + e.getMessage());
         }
         document = documentCVRepository.save(document);

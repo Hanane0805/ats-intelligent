@@ -41,6 +41,13 @@ public class DocumentCVController {
                 .body(documentCVService.uploadDocument(candidatId, file));
     }
 
+    @PostMapping("/analyze-bulk")
+    public ResponseEntity<DocumentCVResponse> analyzeAndCreateCandidate(
+            @RequestParam("file") MultipartFile file) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(documentCVService.analyzeAndCreateCandidate(file));
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteDocument(@PathVariable Long id) {
         documentCVService.deleteDocument(id);

@@ -29,7 +29,7 @@ public class DocumentCV {
     @Column(name = "date_upload")
     private LocalDate dateUpload;
 
-    @OneToOne
+    @ManyToOne
     @JoinColumn(name = "candidat_id")
     private Candidat candidat;
 
