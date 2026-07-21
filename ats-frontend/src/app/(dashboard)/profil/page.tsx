@@ -60,7 +60,7 @@ export default function ProfilPage() {
         prenom: updated.prenom,
         role: updated.role || 'RECRUTEUR_RH'
       };
-      auth.setSession(newSession);
+      await auth.setSession(newSession);
       setUser(auth.getUser());
       
       setSuccess('Profile updated successfully!');

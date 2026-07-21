@@ -4,14 +4,28 @@ import { useState } from 'react';
 import { Mail, Lock, User, Loader2, ArrowRight, LayoutGrid, Activity, ChevronLeft, Building2 } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '../../services/api';
+import { isPasswordValid } from '../../lib/passwordValidation';
+import PasswordStrengthChecklist from '../../components/ui/PasswordStrengthChecklist';
 
 export default function SignupPage() {
   const [formData, setFormData] = useState({ nom: '', prenom: '', email: '', password: '', departement: 'RH' });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [passwordTouched, setPasswordTouched] = useState(false);
+
+  const passwordValid = isPasswordValid(formData.password);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Defense in depth: never send the request if the password policy
+    // isn't satisfied, even if the submit button was somehow triggered.
+    if (!passwordValid) {
+      setPasswordTouched(true);
+      setError('Le mot de passe ne respecte pas toutes les exigences ci-dessous.');
+      return;
+    }
+
     setIsLoading(true);
     setError('');
 
@@ -150,22 +164,31 @@ export default function SignupPage() {
             </div>
 
             {/* Password Field */}
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                <Lock className="h-4 w-4 text-muted-foreground" />
+            <div>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                  <Lock className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <input
+                  type="password"
+                  required
+                  aria-invalid={passwordTouched && !passwordValid}
+                  aria-describedby="password-requirements"
+                  className="block w-full pl-11 pr-3.5 py-2.5 border border-border rounded-lg bg-input-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="Créer un mot de passe"
+                  value={formData.password}
+                  onChange={(e) => setFormData({...formData, password: e.target.value})}
+                  onBlur={() => setPasswordTouched(true)}
+                />
               </div>
-              <input
-                type="password"
-                required
-                className="block w-full pl-11 pr-3.5 py-2.5 border border-border rounded-lg bg-input-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="Créer un mot de passe"
-                onChange={(e) => setFormData({...formData, password: e.target.value})}
-              />
+              <div id="password-requirements">
+                <PasswordStrengthChecklist password={formData.password} active={passwordTouched} />
+              </div>
             </div>
 
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || !passwordValid}
               className="w-full flex justify-center items-center py-2.5 px-4 rounded-lg text-sm font-medium bg-primary text-white hover:opacity-90 disabled:opacity-50 transition-all"
             >
               {isLoading ? <Loader2 className="animate-spin w-4 h-4" /> : 'Créer mon compte'}

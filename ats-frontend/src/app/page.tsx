@@ -4,8 +4,11 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Mail, Lock, Loader2, ArrowRight, LayoutGrid, Activity } from 'lucide-react';
 import { api } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 export default function LoginPage() {
+  const { loginWithGoogle } = useAuth();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -45,7 +48,15 @@ export default function LoginPage() {
 
   const handleGoogleAuth = async () => {
     setIsGoogleLoading(true);
-    setTimeout(() => setIsGoogleLoading(false), 2000);
+    setError('');
+    try {
+      // Redirects the browser to Google's consent screen; on success this
+      // component unmounts, so there's no "finally" resetting the spinner.
+      await loginWithGoogle();
+    } catch (err: any) {
+      setError(err.message || "Impossible de démarrer la connexion avec Google.");
+      setIsGoogleLoading(false);
+    }
   };
 
   return (

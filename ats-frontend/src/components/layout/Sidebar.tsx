@@ -91,7 +91,10 @@ export default function Sidebar() {
           </div>
         </div>
         <button 
-          onClick={() => auth.clearSession() || (window.location.href = '/')}
+          onClick={async () => {
+            await auth.clearSession();
+            window.location.href = '/';
+          }}
           className="flex items-center gap-2 text-blue-300 hover:text-white px-2 py-2 text-sm w-full transition-colors"
         >
           <LogOut className="w-4 h-4" /> Logout

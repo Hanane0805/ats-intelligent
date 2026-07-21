@@ -5,7 +5,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 export const auth = {
   getToken: (): string | null =>
     typeof window !== 'undefined' ? localStorage.getItem('ats_token') : null,
-  setSession: (data: AuthResponse) => {
+  setSession: async (data: AuthResponse) => {
     localStorage.setItem('ats_token', data.token);
     localStorage.setItem('ats_user', JSON.stringify({
       id: data.userId,
@@ -14,6 +14,20 @@ export const auth = {
       prenom: data.prenom,
       role: data.role,
     }));
+
+    // Mirror the token into an httpOnly cookie so middleware.ts can see the
+    // session server-side. localStorage itself is invisible to middleware.
+    try {
+      await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: data.token }),
+      });
+    } catch {
+      // Non-fatal: the app still works via localStorage/Bearer token, but
+      // middleware won't see a session until this succeeds. Worth surfacing
+      // in real usage (e.g. toast/log), left minimal here.
+    }
   },
   getUser: (): User | null => {
     try {
@@ -23,9 +37,15 @@ export const auth = {
       return null;
     }
   },
-  clearSession: () => {
+  clearSession: async () => {
     localStorage.removeItem('ats_token');
     localStorage.removeItem('ats_user');
+
+    try {
+      await fetch('/api/auth/session', { method: 'DELETE' });
+    } catch {
+      // Non-fatal — see note in setSession.
+    }
   },
   isAuthenticated: (): boolean => !!auth.getToken(),
 };
@@ -105,7 +125,7 @@ const request = async <T>(
   const response = await fetch(`${BASE_URL}${path}`, { ...options, headers });
 
   if (response.status === 401) {
-    auth.clearSession();
+    await auth.clearSession();
     window.location.href = '/';
     throw new Error('Session expirée. Veuillez vous reconnecter.');
   }
@@ -124,7 +144,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ email: credentials.email, motDePasse: credentials.password }),
     });
-    auth.setSession(data);
+    await auth.setSession(data);
     return data;
   },
 
@@ -145,12 +165,12 @@ export const api = {
         departement: userData.departement || 'RH',
       }),
     });
-    auth.setSession(data);
+    await auth.setSession(data);
     return data;
   },
 
-  logout: () => {
-    auth.clearSession();
+  logout: async () => {
+    await auth.clearSession();
     window.location.href = '/';
   },
 
@@ -260,7 +280,7 @@ export const api = {
     });
 
     if (response.status === 401) {
-      auth.clearSession();
+      await auth.clearSession();
       window.location.href = '/';
       throw new Error('Session expirée. Veuillez vous reconnecter.');
     }
