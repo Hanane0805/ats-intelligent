@@ -31,6 +31,13 @@ services:
       N8N_API_KEY: ${N8N_API_KEY:-changez-moi-en-production}
       N8N_WEBHOOK_CANDIDATURE_CREATED: http://n8n:5678/webhook/candidature-created
       N8N_WEBHOOK_CANDIDATURE_UPDATED: http://n8n:5678/webhook/candidature-updated
+      # ── Google OAuth2 ── Remplacez par vos credentials Google Cloud Console
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-votre-client-id}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-votre-client-secret}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:3000/auth/google/callback}
+      # ── SMTP Gmail (2FA) ── App Password Gmail requis
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
     depends_on:
       - postgres
       - n8n

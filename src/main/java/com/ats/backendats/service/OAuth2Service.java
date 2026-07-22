@@ -3,7 +3,9 @@ package com.ats.backendats.service;
 import com.ats.backendats.config.JwtService;
 import com.ats.backendats.dto.response.OAuth2Response;
 import com.ats.backendats.model.Utilisateur;
-import com.ats.backendats.repository.UtilisateurRepository;
+import com.ats.backendats.model.RecruteurRH;
+import com.ats.backendats.repository.RecruteurRHRepository;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -37,14 +39,17 @@ public class OAuth2Service {
     private String googleUserInfoUri;
 
     private final JwtService jwtService;
-    private final UtilisateurRepository utilisateurRepository;
+    private final RecruteurRHRepository recruteurRHRepository;
+    private final PasswordEncoder passwordEncoder;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
 
     public OAuth2Service(JwtService jwtService,
-                         UtilisateurRepository utilisateurRepository) {
+                         RecruteurRHRepository recruteurRHRepository,
+                         PasswordEncoder passwordEncoder) {
         this.jwtService = jwtService;
-        this.utilisateurRepository = utilisateurRepository;
+        this.recruteurRHRepository = recruteurRHRepository;
+        this.passwordEncoder = passwordEncoder;
         this.restTemplate = new RestTemplate();
         this.objectMapper = new ObjectMapper();
     }
@@ -63,16 +68,27 @@ public class OAuth2Service {
         Map<String, String> userInfo = getUserInfoFromGoogle(googleAccessToken);
 
         String email = userInfo.get("email");
+        String nom = userInfo.getOrDefault("family_name", "Utilisateur");
+        String prenom = userInfo.getOrDefault("given_name", "Google");
 
-        Optional<Utilisateur> existingUser = utilisateurRepository.findByEmail(email);
+        Optional<RecruteurRH> existingUser = recruteurRHRepository.findByEmail(email);
 
+        RecruteurRH user;
         if (existingUser.isEmpty()) {
-            throw new RuntimeException(
-                    "Compte non trouve. Veuillez d'abord creer un compte avec cet email."
-            );
+            // Création automatique du compte RecruteurRH
+            user = new RecruteurRH();
+            user.setEmail(email);
+            user.setNom(nom);
+            user.setPrenom(prenom);
+            // Mot de passe aléatoire (l'utilisateur se connectera via Google)
+            user.setMotDePasse(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
+            user.setDepartement("RH (Google)");
+            user = recruteurRHRepository.save(user);
+        } else {
+            user = existingUser.get();
         }
 
-        String token = jwtService.generateToken(email, "USER", 86400000L);
+        String token = jwtService.generateToken(email, "RECRUTEUR", user.getId(), 86400000L);
 
         return OAuth2Response.builder()
                 .accessToken(token)

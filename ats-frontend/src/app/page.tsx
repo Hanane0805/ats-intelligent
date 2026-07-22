@@ -14,6 +14,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
 
   // Live Stats State
   const [candidatesAnalyzed, setCandidatesAnalyzed] = useState(1247);
@@ -37,8 +38,15 @@ export default function LoginPage() {
     setError('');
 
     try {
-      await api.login({ email, password });
-      window.location.href = '/dashboard';
+      const data = await api.login({ email, password, rememberMe });
+      if (data.requiresTwoFactor) {
+        // Store email temporarily for the 2FA page
+        sessionStorage.setItem('2fa_email', data.tempEmail || email);
+        sessionStorage.setItem('2fa_remember', String(rememberMe));
+        window.location.href = '/auth/2fa';
+      } else {
+        window.location.href = '/dashboard';
+      }
     } catch (err: any) {
       setError(err.message || 'Email ou mot de passe incorrect.');
     } finally {
@@ -171,9 +179,17 @@ export default function LoginPage() {
                 />
               </div>
 
-              <div className="flex justify-between items-center text-xs pt-1">
-                <Link href="/signup" className="text-primary hover:underline font-medium">Create an account</Link>
-                <Link href="/forgot-password" className="text-primary hover:underline font-medium">Forgot password?</Link>
+              <div className="flex items-center justify-between text-xs pt-1">
+                <label className="flex items-center gap-2 cursor-pointer select-none text-muted-foreground hover:text-foreground transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={e => setRememberMe(e.target.checked)}
+                    className="w-3.5 h-3.5 accent-primary rounded"
+                  />
+                  Se souvenir de moi (30 jours)
+                </label>
+                <Link href="/forgot-password" className="text-primary hover:underline font-medium">Mot de passe oublié ?</Link>
               </div>
             </div>
 
@@ -207,6 +223,13 @@ export default function LoginPage() {
             </svg>
             Sign in with Google
           </button>
+
+          <p className="text-center text-xs text-muted-foreground mt-2">
+            Pas encore de compte ?{' '}
+            <Link href="/signup" className="text-primary hover:underline font-medium">
+              Créer un compte
+            </Link>
+          </p>
         </div>
       </div>
     </div>

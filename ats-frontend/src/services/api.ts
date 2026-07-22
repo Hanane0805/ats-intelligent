@@ -67,6 +67,9 @@ export interface AuthResponse {
   email: string;
   nom: string;
   prenom: string;
+  // 2FA fields
+  requiresTwoFactor?: boolean;
+  tempEmail?: string;
 }
 
 export interface FichePoste {
@@ -156,13 +159,36 @@ const request = async <T>(
 
 export const api = {
   // Auth
-  login: async (credentials: { email: string; password: string }): Promise<AuthResponse> => {
+  login: async (credentials: { email: string; password: string; rememberMe?: boolean }): Promise<AuthResponse> => {
     const data = await request<AuthResponse>('/api/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email: credentials.email, motDePasse: credentials.password }),
+      body: JSON.stringify({
+        email: credentials.email,
+        motDePasse: credentials.password,
+        rememberMe: credentials.rememberMe ?? false,
+      }),
+    });
+    // If 2FA is required, don't set session yet
+    if (!data.requiresTwoFactor) {
+      await auth.setSession(data);
+    }
+    return data;
+  },
+
+  verify2FA: async (email: string, code: string): Promise<AuthResponse> => {
+    const data = await request<AuthResponse>('/api/auth/2fa/verify', {
+      method: 'POST',
+      body: JSON.stringify({ email, code }),
     });
     await auth.setSession(data);
     return data;
+  },
+
+  resend2FA: async (email: string): Promise<void> => {
+    await request<{ message: string }>('/api/auth/2fa/resend', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
   },
 
   register: async (userData: {

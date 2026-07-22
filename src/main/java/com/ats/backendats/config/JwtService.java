@@ -24,12 +24,16 @@ public class JwtService {
     }
 
     public String generateToken(String email, String role, Long userId) {
+        return generateToken(email, role, userId, expiration);
+    }
+
+    public String generateToken(String email, String role, Long userId, long customExpiration) {
         return Jwts.builder()
                 .subject(email)
                 .claim("role", role)
                 .claim("userId", userId)
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + expiration))
+                .expiration(new Date(System.currentTimeMillis() + customExpiration))
                 .signWith(getSigningKey())
                 .compact();
     }
