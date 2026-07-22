@@ -16,9 +16,12 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final N8nApiKeyFilter n8nApiKeyFilter;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
+                          N8nApiKeyFilter n8nApiKeyFilter) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.n8nApiKeyFilter = n8nApiKeyFilter;
     }
 
     @Bean
@@ -38,13 +41,16 @@ public class SecurityConfig {
                                 "/api/candidats",
                                 "/api/administrateurs",
                                 "/api/recruteurs",
+                                "/api/n8n/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
                                 "/v3/api-docs/**",
                                 "/v3/api-docs.yaml"
                         ).permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated()
                 )
+                .addFilterBefore(n8nApiKeyFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

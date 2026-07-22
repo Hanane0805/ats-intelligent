@@ -12,11 +12,14 @@ interface UploadedFile {
   progress: number;
   errorMsg?: string;
   candidateName?: string;
+  texteBrut?: string;
+  nombreChunks?: number;
 }
 
 export default function AnalysisPage() {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<UploadedFile | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const formatSize = (bytes: number) => {
@@ -35,7 +38,9 @@ export default function AnalysisPage() {
         ...f, 
         status: 'completed', 
         progress: 100,
-        candidateName: response.candidatNom
+        candidateName: response.candidatNom,
+        texteBrut: response.texteBrut,
+        nombreChunks: response.nombreChunks
       } : f));
 
     } catch (err: any) {
@@ -164,6 +169,14 @@ export default function AnalysisPage() {
                     </p>
                     <div className="flex items-center gap-3 flex-shrink-0">
                       <span className="text-xs font-medium text-gray-400">{file.size}</span>
+                      {file.status === 'completed' && (
+                        <button 
+                          onClick={() => setSelectedFile(file)}
+                          className="px-3 py-1 bg-[#1e3a8a] text-white text-xs rounded hover:bg-[#1e3a8a]/90 transition-colors"
+                        >
+                          View Analysis
+                        </button>
+                      )}
                       {file.status === 'completed' && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
                       {file.status === 'processing' && <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />}
                       {file.status === 'error' && <span className="text-xs font-bold text-rose-500">Failed</span>}
@@ -190,6 +203,74 @@ export default function AnalysisPage() {
 
               </div>
             ))}
+          </div>
+        </div>
+      )}
+      {/* RAG Analysis Modal */}
+      {selectedFile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50/80">
+              <div className="flex items-center gap-3">
+                <div className="bg-[#1e3a8a]/10 text-[#1e3a8a] p-2 rounded-lg">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">{selectedFile.candidateName || 'Unknown Candidate'}</h2>
+                  <p className="text-xs text-gray-500">{selectedFile.name}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSelectedFile(null)}
+                className="text-gray-400 hover:text-gray-700 hover:bg-gray-100 p-2 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            {/* Body */}
+            <div className="p-6 overflow-y-auto flex-1">
+              
+              {/* RAG Info Card */}
+              <div className="mb-6 bg-emerald-50 border border-emerald-100 rounded-xl p-4 flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                <div>
+                  <h4 className="text-emerald-900 font-bold text-sm">Extraction RAG (Ollama Llama 3)</h4>
+                  <p className="text-emerald-700 text-xs mt-1 leading-relaxed">
+                    Ce CV a été découpé et indexé mathématiquement dans PostgreSQL (pgvector).
+                    <strong> {selectedFile.nombreChunks || 0} morceaux (chunks)</strong> ont été générés.
+                    Lors de l'analyse, seuls les morceaux les plus pertinents ont été envoyés à l'IA locale pour économiser la mémoire et améliorer la précision !
+                  </p>
+                </div>
+              </div>
+
+              {/* Raw Text Extract */}
+              <div>
+                <h4 className="text-sm font-bold text-gray-900 mb-2 flex justify-between">
+                  <span>Texte brut extrait du CV (Contexte IA)</span>
+                  <span className="text-xs font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                    {selectedFile.texteBrut?.length || 0} caractères
+                  </span>
+                </h4>
+                <div className="bg-gray-900 rounded-xl p-4 overflow-y-auto max-h-[300px] border border-gray-200 shadow-inner custom-scrollbar">
+                  <pre className="text-xs text-emerald-400 font-mono whitespace-pre-wrap leading-relaxed">
+                    {selectedFile.texteBrut || 'Aucun texte extrait.'}
+                  </pre>
+                </div>
+              </div>
+              
+            </div>
+            
+            {/* Footer */}
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end">
+              <button 
+                onClick={() => setSelectedFile(null)}
+                className="px-5 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors shadow-sm"
+              >
+                Fermer l'analyse
+              </button>
+            </div>
           </div>
         </div>
       )}

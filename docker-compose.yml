@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: ats_db
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 
@@ -24,9 +24,47 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ats_db
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      SPRING_AI_OLLAMA_BASE_URL: http://ollama:11434
+      SPRING_AI_OLLAMA_CHAT_OPTIONS_MODEL: llama3.2:1b
+      SPRING_AI_OLLAMA_EMBEDDING_OPTIONS_MODEL: llama3.2:1b
+      N8N_ENABLED: ${N8N_ENABLED:-true}
+      N8N_API_KEY: ${N8N_API_KEY:-changez-moi-en-production}
+      N8N_WEBHOOK_CANDIDATURE_CREATED: http://n8n:5678/webhook/candidature-created
+      N8N_WEBHOOK_CANDIDATURE_UPDATED: http://n8n:5678/webhook/candidature-updated
     depends_on:
       - postgres
+      - n8n
+
+  # n8n - Automatisation des workflows ATS
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: ats-n8n
+    ports:
+      - "5678:5678"
+    environment:
+      N8N_HOST: localhost
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: http://localhost:5678/
+      GENERIC_TIMEZONE: Europe/Paris
+      N8N_SECURE_COOKIE: "false"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/home/node/workflows:ro
+
+  # Ollama - Serveur IA Local
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ats-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # La commande de démarrage n'est pas nécessaire, mais il faudra télécharger le modèle manuellement
+    # via "docker exec -it ats-ollama ollama run llama3"
+
 
 volumes:
   pgdata:
+  n8n_data:
+  ollama_data:

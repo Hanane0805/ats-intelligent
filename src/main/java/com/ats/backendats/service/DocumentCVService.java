@@ -12,6 +12,8 @@ import com.ats.backendats.repository.DocumentCVRepository;
 import org.apache.tika.Tika;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.converter.BeanOutputConverter;
+import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -29,16 +31,19 @@ public class DocumentCVService {
     private final CandidatRepository candidatRepository;
     private final CVChunkRepository cvChunkRepository;
     private final ChatClient chatClient;
+    private final EmbeddingModel embeddingModel;
     private final Tika tika;
 
     public DocumentCVService(DocumentCVRepository documentCVRepository,
                              CandidatRepository candidatRepository,
                              CVChunkRepository cvChunkRepository,
-                             ChatClient.Builder chatClientBuilder) {
+                             ChatClient.Builder chatClientBuilder,
+                             EmbeddingModel embeddingModel) {
         this.documentCVRepository = documentCVRepository;
         this.candidatRepository = candidatRepository;
         this.cvChunkRepository = cvChunkRepository;
         this.chatClient = chatClientBuilder.build();
+        this.embeddingModel = embeddingModel;
         this.tika = new Tika();
     }
 
@@ -125,6 +130,27 @@ public class DocumentCVService {
         document.setTexteBrut(texteBrut);
         document = documentCVRepository.save(document);
 
+        // Process chunks (RAG Setup)
+        try {
+            TokenTextSplitter splitter = new TokenTextSplitter();
+            java.util.List<org.springframework.ai.document.Document> documents = splitter.split(
+                java.util.Collections.singletonList(new org.springframework.ai.document.Document(texteBrut)));
+            
+            for (int i = 0; i < documents.size(); i++) {
+                String chunkText = documents.get(i).getText();
+                float[] embedding = embeddingModel.embed(chunkText);
+                
+                com.ats.backendats.model.CVChunk cvChunk = new com.ats.backendats.model.CVChunk();
+                cvChunk.setContenuTexte(chunkText);
+                cvChunk.setVecteurEmbedding(embedding);
+                cvChunk.setIndexOrdre(i);
+                cvChunk.setDocumentCV(document);
+                cvChunkRepository.save(cvChunk);
+            }
+        } catch (Exception e) {
+            System.err.println("Erreur lors de la création des chunks RAG: " + e.getMessage());
+        }
+
         return toResponse(document);
     }
 
@@ -135,9 +161,25 @@ public class DocumentCVService {
     private CandidatExtractionResponse tryExtractWithAI(String texteBrut, String filename) {
         try {
             BeanOutputConverter<CandidatExtractionResponse> converter = new BeanOutputConverter<>(CandidatExtractionResponse.class);
+            
+            // RAG Retrieval for extraction: We use the embedding of the prompt itself to find relevant info
+            String query = "informations personnelles email nom prenom candidat";
+            float[] queryVector = embeddingModel.embed(query);
+            // Conversion vector to string for postgres pgvector 'findNearestChunks'
+            String vectorString = java.util.Arrays.toString(queryVector);
+            List<com.ats.backendats.model.CVChunk> relevantChunks = cvChunkRepository.findNearestChunks(vectorString, 3);
+            
+            String context = relevantChunks.stream()
+                .map(com.ats.backendats.model.CVChunk::getContenuTexte)
+                .collect(Collectors.joining("\n"));
+            
+            if (context.isEmpty()) {
+                context = texteBrut.length() > 3000 ? texteBrut.substring(0, 3000) : texteBrut;
+            }
+
             String prompt = "Tu es un assistant de recrutement. Extrait les informations personnelles du candidat à partir du texte de CV suivant. " +
                     "Si une information n'est pas trouvée, laisse le champ vide ou null.\n\n" +
-                    "CV Texte:\n" + (texteBrut.length() > 3000 ? texteBrut.substring(0, 3000) : texteBrut) +
+                    "Contexte pertinent du CV:\n" + context +
                     "\n\n" + converter.getFormat();
 
             String response = chatClient.prompt().user(prompt).call().content();

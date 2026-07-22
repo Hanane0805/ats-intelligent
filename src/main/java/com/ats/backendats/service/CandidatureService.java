@@ -28,6 +28,7 @@ public class CandidatureService {
     private final CandidatureRepository candidatureRepository;
     private final CandidatRepository candidatRepository;
     private final FichePosteRepository fichePosteRepository;
+    private final N8nWebhookService n8nWebhookService;
 
     public List<CandidatureResponse> getAllCandidatures() {
         return candidatureRepository.findAll().stream()
@@ -75,6 +76,7 @@ public class CandidatureService {
         candidature.setStatut(StatutCandidature.RECUE);
         candidature.setDatePostulation(java.time.LocalDate.now());
         candidature = candidatureRepository.save(candidature);
+        n8nWebhookService.notifyCandidatureCreated(candidature);
         return toResponse(candidature);
     }
 
@@ -82,6 +84,7 @@ public class CandidatureService {
     public CandidatureResponse updateCandidature(Long id, CandidatureUpdateRequest request) {
         Candidature candidature = candidatureRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Candidature non trouvée avec l'ID : " + id));
+        String ancienStatut = candidature.getStatut() != null ? candidature.getStatut().name() : null;
         if (request.getStatut() != null) {
             candidature.setStatut(StatutCandidature.valueOf(request.getStatut().toUpperCase()));
         }
@@ -89,6 +92,7 @@ public class CandidatureService {
             candidature.setScoreCompatibilite(request.getScoreCompatibilite());
         }
         candidature = candidatureRepository.save(candidature);
+        n8nWebhookService.notifyCandidatureUpdated(candidature, ancienStatut);
         return toResponse(candidature);
     }
 

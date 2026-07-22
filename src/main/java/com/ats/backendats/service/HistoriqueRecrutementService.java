@@ -1,11 +1,17 @@
 package com.ats.backendats.service;
 
+import com.ats.backendats.dto.request.HistoriqueRecrutementRequest;
 import com.ats.backendats.dto.response.HistoriqueRecrutementResponse;
+import com.ats.backendats.exception.ResourceNotFoundException;
+import com.ats.backendats.model.Candidature;
 import com.ats.backendats.model.HistoriqueRecrutement;
+import com.ats.backendats.repository.CandidatureRepository;
 import com.ats.backendats.repository.HistoriqueRecrutementRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -14,6 +20,24 @@ import java.util.stream.Collectors;
 public class HistoriqueRecrutementService {
 
     private final HistoriqueRecrutementRepository historiqueRepository;
+    private final CandidatureRepository candidatureRepository;
+
+    @Transactional
+    public HistoriqueRecrutementResponse createHistorique(HistoriqueRecrutementRequest request) {
+        Candidature candidature = candidatureRepository.findById(request.getCandidatureId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Candidature non trouvée avec l'ID : " + request.getCandidatureId()));
+
+        HistoriqueRecrutement historique = new HistoriqueRecrutement();
+        historique.setAncienStatut(request.getAncienStatut());
+        historique.setNouveauStatut(request.getNouveauStatut());
+        historique.setCommentaire(request.getCommentaire());
+        historique.setDateChangement(LocalDate.now());
+        historique.setCandidature(candidature);
+        historique.setCandidat(candidature.getCandidat());
+        historique = historiqueRepository.save(historique);
+        return mapToResponse(historique);
+    }
 
     public List<HistoriqueRecrutementResponse> getAllHistoriques() {
         return historiqueRepository.findAll().stream()

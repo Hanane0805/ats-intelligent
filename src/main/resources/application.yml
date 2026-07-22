@@ -49,3 +49,10 @@ springdoc:
       type: http
       scheme: bearer
       bearerFormat: JWT
+
+n8n:
+  enabled: ${N8N_ENABLED:false}
+  api-key: ${N8N_API_KEY:}
+  webhooks:
+    candidature-created: ${N8N_WEBHOOK_CANDIDATURE_CREATED:}
+    candidature-updated: ${N8N_WEBHOOK_CANDIDATURE_UPDATED:}

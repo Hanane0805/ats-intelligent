@@ -85,7 +85,7 @@ export default function LoginPage() {
           <div className="absolute w-52 h-52 border border-dashed border-emerald-400/50 bg-primary/40 backdrop-blur-md rounded-full flex flex-col items-center justify-center z-20 shadow-[0_0_30px_rgba(16,185,129,0.2)]">
             <div className="text-center space-y-4 w-full">
               <div>
-                <p className="text-4xl font-black tracking-tight text-white">{candidatesAnalyzed.toLocaleString()}</p>
+                <p className="text-4xl font-black tracking-tight text-white">{candidatesAnalyzed.toLocaleString('en-US')}</p>
                 <p className="text-[10px] uppercase tracking-widest text-emerald-400 font-bold mt-1">CVs Analyzed</p>
               </div>
               <div className="w-16 h-px bg-white/20 mx-auto"></div>
@@ -107,7 +107,7 @@ export default function LoginPage() {
         {/* Analytics Stats Metrics Footer */}
         <div className="flex justify-between w-full max-w-md text-center pt-6 border-t border-white/10 z-30">
           <div className="flex-1 space-y-0.5">
-            <p className="text-2xl font-extrabold text-white tracking-tight">{candidatesAnalyzed.toLocaleString()}</p>
+            <p className="text-2xl font-extrabold text-white tracking-tight">{candidatesAnalyzed.toLocaleString('en-US')}</p>
             <p className="text-xs text-slate-300 font-normal">Total Processed</p>
           </div>
           <div className="flex-1 space-y-0.5 border-x border-white/10 px-2">

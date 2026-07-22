@@ -109,6 +109,17 @@ export interface DashboardStats {
   candidaturesRejetees: number;
 }
 
+export interface DocumentCVResponse {
+  id: number;
+  nomFichier: string;
+  cheminStockage?: string;
+  texteBrut: string;
+  dateUpload: string;
+  candidatId: number;
+  candidatNom: string;
+  nombreChunks: number;
+}
+
 // ─── HTTP Helper ──────────────────────────────────────────────────────────────
 
 const request = async <T>(
@@ -131,7 +142,13 @@ const request = async <T>(
   }
 
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || `Erreur ${response.status}`);
+  if (!response.ok) {
+    let errorMessage = data.message || data.error || `Erreur ${response.status}`;
+    if (data.errors) {
+      errorMessage = Object.values(data.errors).join(', ');
+    }
+    throw new Error(errorMessage);
+  }
   return data as T;
 };
 
@@ -265,7 +282,7 @@ export const api = {
   getCandidats: (): Promise<any[]> => request<any[]>('/api/candidats'),
 
   // Document CV / Analysis
-  uploadAndAnalyzeCV: async (file: File): Promise<any> => {
+  uploadAndAnalyzeCV: async (file: File): Promise<DocumentCVResponse> => {
     const formData = new FormData();
     formData.append('file', file);
 

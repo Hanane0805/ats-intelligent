@@ -1,13 +1,17 @@
 package com.ats.backendats.service;
 
+import com.ats.backendats.dto.request.NotificationRequest;
 import com.ats.backendats.dto.response.NotificationResponse;
 import com.ats.backendats.exception.ResourceNotFoundException;
 import com.ats.backendats.model.Notification;
+import com.ats.backendats.model.Utilisateur;
 import com.ats.backendats.repository.NotificationRepository;
+import com.ats.backendats.repository.UtilisateurRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -16,6 +20,7 @@ import java.util.stream.Collectors;
 public class NotificationService {
 
     private final NotificationRepository notificationRepository;
+    private final UtilisateurRepository utilisateurRepository;
 
     public List<NotificationResponse> getNotificationsByUtilisateur(Long utilisateurId) {
         return notificationRepository.findByUtilisateur_Id(utilisateurId).stream()
@@ -27,6 +32,22 @@ public class NotificationService {
         return notificationRepository.findByUtilisateur_IdAndEstLuFalse(utilisateurId).stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public NotificationResponse createNotification(NotificationRequest request) {
+        Utilisateur utilisateur = utilisateurRepository.findById(request.getUtilisateurId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Utilisateur non trouvé avec l'ID : " + request.getUtilisateurId()));
+
+        Notification notification = new Notification();
+        notification.setTitre(request.getTitre());
+        notification.setMessage(request.getMessage());
+        notification.setDateCreation(LocalDateTime.now());
+        notification.setEstLu(false);
+        notification.setUtilisateur(utilisateur);
+        notification = notificationRepository.save(notification);
+        return toResponse(notification);
     }
 
     @Transactional

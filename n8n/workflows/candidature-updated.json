@@ -1,0 +1,141 @@
+{
+  "name": "ATS - Changement statut candidature",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "candidature-updated",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "d4e5f6a7-b8c9-0123-def0-234567890123",
+      "name": "Webhook Mise à jour Candidature",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "candidature-updated"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:8080/api/n8n/historiques",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-API-KEY",
+              "value": "changez-moi-en-production"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"candidatureId\": {{ $json.candidatureId }},\n  \"ancienStatut\": \"{{ $json.ancienStatut }}\",\n  \"nouveauStatut\": \"{{ $json.statut }}\",\n  \"commentaire\": \"Statut changé de {{ $json.ancienStatut }} à {{ $json.statut }} pour {{ $json.candidatNom }}\"\n}"
+      },
+      "id": "e5f6a7b8-c9d0-1234-ef01-345678901234",
+      "name": "Logger changement statut",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-accepte",
+              "leftValue": "={{ $json.statut }}",
+              "rightValue": "ACCEPTE",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "cond-refuse",
+              "leftValue": "={{ $json.statut }}",
+              "rightValue": "REFUSE",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "f6a7b8c9-d0e1-2345-f012-456789012345",
+      "name": "Statut final ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"ok\", \"statut\": \"{{ $json.statut }}\" }"
+      },
+      "id": "a7b8c9d0-e1f2-3456-0123-567890123456",
+      "name": "Répondre au webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1080, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Mise à jour Candidature": {
+      "main": [
+        [
+          {
+            "node": "Logger changement statut",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Logger changement statut": {
+      "main": [
+        [
+          {
+            "node": "Statut final ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Statut final ?": {
+      "main": [
+        [
+          {
+            "node": "Répondre au webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Répondre au webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
