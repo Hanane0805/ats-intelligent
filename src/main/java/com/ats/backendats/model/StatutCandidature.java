@@ -1,8 +1,9 @@
 package com.ats.backendats.model;
 
 public enum StatutCandidature {
-    RECUE,
-    EN_COURS_D_ANALYSE,
+    EN_ATTENTE,
+    EN_ANALYSE,
+    ENTRETIEN,
     ACCEPTE,
-    REFUSE
+    REJETE
 }

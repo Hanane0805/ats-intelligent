@@ -215,11 +215,18 @@ export const api = {
   getCandidature: (id: number): Promise<Candidature> =>
     request<Candidature>(`/api/candidatures/${id}`),
 
-  updateCandidatureStatus: (id: number, statut: string): Promise<Candidature> =>
-    request<Candidature>(`/api/candidatures/${id}`, {
+  updateCandidatureStatus: async (id: number, statut: string): Promise<Candidature> => {
+    return request<Candidature>(`/api/candidatures/${id}`, {
       method: 'PUT',
       body: JSON.stringify({ statut }),
-    }),
+    });
+  },
+
+  analyzeCandidature: async (id: number): Promise<Candidature> => {
+    return request<Candidature>(`/api/candidatures/${id}/analyze`, {
+      method: 'POST',
+    });
+  },
 
   createCandidature: (candidatId: number, fichePosteId: number): Promise<Candidature> =>
     request<Candidature>('/api/candidatures', {

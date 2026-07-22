@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Medal, Loader2, Trophy, ChevronDown } from 'lucide-react';
+import { Medal, Loader2, Trophy, ChevronDown, Wand2, X, AlertCircle } from 'lucide-react';
 import { api, Candidature } from '../../../services/api';
 
 const STATUS_OPTIONS = [
@@ -43,6 +43,10 @@ export default function RankingsPage() {
   const [error, setError] = useState('');
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [filterJob, setFilterJob] = useState<string>('all');
+  
+  // AI Analysis states
+  const [analyzingId, setAnalyzingId] = useState<number | null>(null);
+  const [selectedCandidature, setSelectedCandidature] = useState<Candidature | null>(null);
 
   useEffect(() => {
     fetchCandidatures();
@@ -67,6 +71,22 @@ export default function RankingsPage() {
       console.error(e);
     } finally {
       setUpdatingId(null);
+    }
+  };
+
+  const handleAnalyze = async (id: number) => {
+    setAnalyzingId(id);
+    try {
+      const updated = await api.analyzeCandidature(id);
+      setCandidatures(prev => {
+        const sorted = prev.map(c => c.id === id ? updated : c).sort((a, b) => (b.scoreCompatibilite || 0) - (a.scoreCompatibilite || 0));
+        return sorted;
+      });
+      setSelectedCandidature(updated);
+    } catch (e: any) {
+      alert(e.message || "Erreur lors de l'analyse");
+    } finally {
+      setAnalyzingId(null);
     }
   };
 
@@ -182,6 +202,7 @@ export default function RankingsPage() {
                     <th className="px-6 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-wider">Match Score</th>
                     <th className="px-6 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-wider">AI Recommendation</th>
                     <th className="px-6 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -241,6 +262,31 @@ export default function RankingsPage() {
                             }
                           </div>
                         </td>
+                        <td className="px-6 py-4 text-right">
+                          <button
+                            onClick={() => {
+                              if (c.analyseIA) {
+                                setSelectedCandidature(c);
+                              } else {
+                                handleAnalyze(c.id);
+                              }
+                            }}
+                            disabled={analyzingId === c.id}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                              c.analyseIA 
+                              ? 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200' 
+                              : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200'
+                            } disabled:opacity-50`}
+                          >
+                            {analyzingId === c.id ? (
+                              <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Analyse...</>
+                            ) : c.analyseIA ? (
+                              <><Trophy className="w-3.5 h-3.5" /> Voir Rapport</>
+                            ) : (
+                              <><Wand2 className="w-3.5 h-3.5" /> Analyser IA</>
+                            )}
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -249,6 +295,74 @@ export default function RankingsPage() {
             </div>
           </div>
         </>
+      )}
+
+      {/* AI Analysis Modal */}
+      {selectedCandidature && selectedCandidature.analyseIA && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50/80">
+              <div className="flex items-center gap-3">
+                <div className="bg-[#1e3a8a]/10 text-[#1e3a8a] p-2 rounded-lg">
+                  <Wand2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">Rapport d'Analyse IA</h2>
+                  <p className="text-xs text-gray-500">
+                    {selectedCandidature.candidatNom} ➔ {selectedCandidature.fichePosteTitre}
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSelectedCandidature(null)}
+                className="text-gray-400 hover:text-gray-700 hover:bg-gray-100 p-2 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            {/* Body */}
+            <div className="p-6 overflow-y-auto flex-1 bg-slate-50/50">
+              <div className="flex gap-6 mb-6">
+                <div className="flex flex-col items-center justify-center bg-white border border-gray-100 rounded-xl p-6 shadow-sm min-w-[140px]">
+                  <span className={`text-4xl font-black ${getScoreColor(selectedCandidature.analyseIA.score).text}`}>
+                    {Math.round(selectedCandidature.analyseIA.score)}%
+                  </span>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">Match Score</span>
+                </div>
+                <div className="flex-1 bg-white border border-gray-100 rounded-xl p-5 shadow-sm flex flex-col justify-center">
+                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Recommandation</h4>
+                  <p className="text-gray-800 font-medium">
+                    {selectedCandidature.analyseIA.recommandation || 'Aucune recommandation générée.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-emerald-50/50 border border-emerald-100 rounded-xl p-5">
+                  <h4 className="text-emerald-800 font-bold text-sm mb-3 flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-emerald-200 text-emerald-700 flex items-center justify-center text-xs">👍</span>
+                    Points Forts
+                  </h4>
+                  <div className="text-sm text-emerald-900/80 whitespace-pre-wrap leading-relaxed">
+                    {selectedCandidature.analyseIA.syntheseForces || 'Non renseigné.'}
+                  </div>
+                </div>
+
+                <div className="bg-rose-50/50 border border-rose-100 rounded-xl p-5">
+                  <h4 className="text-rose-800 font-bold text-sm mb-3 flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-rose-200 text-rose-700 flex items-center justify-center text-xs">⚠️</span>
+                    Points à vérifier
+                  </h4>
+                  <div className="text-sm text-rose-900/80 whitespace-pre-wrap leading-relaxed">
+                    {selectedCandidature.analyseIA.syntheseFaiblesses || 'Non renseigné.'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -66,4 +66,9 @@ public class CandidatureController {
         candidatureService.deleteCandidature(id);
         return ResponseEntity.noContent().build();
     }
+
+    @PostMapping("/{id}/analyze")
+    public ResponseEntity<CandidatureResponse> analyzeCandidature(@PathVariable Long id) {
+        return ResponseEntity.ok(candidatureService.analyzeCandidature(id));
+    }
 }
