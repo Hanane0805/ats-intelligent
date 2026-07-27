@@ -263,7 +263,14 @@ export const api = {
   getCandidaturesByPoste: (fichePosteId: number): Promise<Candidature[]> =>
     request<Candidature[]>(`/api/candidatures/poste/${fichePosteId}`),
 
+  // --- Sourcing (RAG) ---
+  semanticSearch: async (query: string, topK: number = 10): Promise<any[]> => {
+    return request<any[]>(`/api/sourcing/search?query=${encodeURIComponent(query)}&topK=${topK}`);
+  },
 
+  embedAllExistingCVs: async (): Promise<any> => {
+    return request<any>('/api/sourcing/embed-all', { method: 'POST' });
+  },
   // Users (Recruteurs)
   getUsers: (): Promise<any[]> => request<any[]>('/api/recruteurs'),
 

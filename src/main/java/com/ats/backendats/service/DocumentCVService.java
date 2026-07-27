@@ -33,18 +33,29 @@ public class DocumentCVService {
     private final ChatClient chatClient;
     private final EmbeddingModel embeddingModel;
     private final Tika tika;
+    private final org.springframework.context.ApplicationContext applicationContext;
+    private RagSourcingService ragSourcingService;
 
     public DocumentCVService(DocumentCVRepository documentCVRepository,
                              CandidatRepository candidatRepository,
                              CVChunkRepository cvChunkRepository,
                              ChatClient.Builder chatClientBuilder,
-                             EmbeddingModel embeddingModel) {
+                             EmbeddingModel embeddingModel,
+                             org.springframework.context.ApplicationContext applicationContext) {
         this.documentCVRepository = documentCVRepository;
         this.candidatRepository = candidatRepository;
         this.cvChunkRepository = cvChunkRepository;
         this.chatClient = chatClientBuilder.build();
         this.embeddingModel = embeddingModel;
+        this.applicationContext = applicationContext;
         this.tika = new Tika();
+    }
+
+    private RagSourcingService getRagSourcingService() {
+        if (ragSourcingService == null) {
+            ragSourcingService = applicationContext.getBean(RagSourcingService.class);
+        }
+        return ragSourcingService;
     }
 
     public List<DocumentCVResponse> getAllDocuments() {
@@ -148,7 +159,14 @@ public class DocumentCVService {
                 cvChunkRepository.save(cvChunk);
             }
         } catch (Exception e) {
-            System.err.println("Erreur lors de la création des chunks RAG: " + e.getMessage());
+            System.err.println("Erreur lors de la création des chunks RAG (relationnels): " + e.getMessage());
+        }
+
+        // Push to Vector Store for Semantic Search
+        try {
+            getRagSourcingService().embedCandidateCV(candidat, document);
+        } catch (Exception e) {
+            System.err.println("Erreur lors du push dans le VectorStore: " + e.getMessage());
         }
 
         return toResponse(document);

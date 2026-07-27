@@ -1,13 +1,16 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { History, Loader2, FileText, ArrowRight, Activity } from 'lucide-react';
+import { History, Loader2, FileText, ArrowRight, Activity, Search, Filter } from 'lucide-react';
 import { api } from '../../../services/api';
 
 export default function HistoryPage() {
   const [historyLogs, setHistoryLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  const [search, setSearch] = useState('');
+  const [filterStatus, setFilterStatus] = useState('ALL');
 
   useEffect(() => {
     fetchHistory();
@@ -24,6 +27,13 @@ export default function HistoryPage() {
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
   };
+
+  const filteredLogs = historyLogs.filter(log => {
+    const term = search.toLowerCase();
+    const matchesSearch = (log.candidatNom || '').toLowerCase().includes(term) || (log.posteTitre || '').toLowerCase().includes(term);
+    const matchesStatus = filterStatus === 'ALL' || log.nouveauStatut === filterStatus;
+    return matchesSearch && matchesStatus;
+  });
 
   const getStatusColor = (statut: string) => {
     const s = statut?.toUpperCase() || '';
@@ -48,6 +58,36 @@ export default function HistoryPage() {
         </button>
       </div>
 
+      {/* Filters Toolbar */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-col md:flex-row gap-4 items-center">
+        <div className="relative flex-1 w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Rechercher par candidat ou poste..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+          />
+        </div>
+        <div className="flex items-center gap-2 text-sm text-gray-600 w-full md:w-auto">
+          <Filter className="w-4 h-4 text-gray-400" />
+          <span>Statut :</span>
+          <select 
+            value={filterStatus} 
+            onChange={e => setFilterStatus(e.target.value)}
+            className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+          >
+            <option value="ALL">Tous</option>
+            <option value="EN_ATTENTE">En attente</option>
+            <option value="EN_ANALYSE">En analyse</option>
+            <option value="ENTRETIEN">Entretien</option>
+            <option value="ACCEPTE">Accepté</option>
+            <option value="REJETE">Rejeté</option>
+          </select>
+        </div>
+      </div>
+
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mt-2 p-6">
         {loading && (
           <div className="flex items-center justify-center py-20 gap-3 text-gray-500">
@@ -62,17 +102,17 @@ export default function HistoryPage() {
           </div>
         )}
 
-        {!loading && !error && historyLogs.length === 0 && (
+        {!loading && !error && filteredLogs.length === 0 && (
           <div className="py-20 text-center">
             <Activity className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500 font-medium">No history events found.</p>
-            <p className="text-sm text-gray-400 mt-1">Status changes from the Rankings page will appear here.</p>
+            <p className="text-gray-500 font-medium">Aucun événement trouvé.</p>
+            <p className="text-sm text-gray-400 mt-1">Essayez de modifier vos filtres.</p>
           </div>
         )}
 
-        {!loading && !error && historyLogs.length > 0 && (
+        {!loading && !error && filteredLogs.length > 0 && (
           <div className="relative border-l-2 border-gray-100 ml-4 pl-6 space-y-8 py-4">
-            {historyLogs.map((log) => {
+            {filteredLogs.map((log) => {
               const dateObj = new Date(log.dateChangement);
               const oldTheme = getStatusColor(log.ancienStatut);
               const newTheme = getStatusColor(log.nouveauStatut);

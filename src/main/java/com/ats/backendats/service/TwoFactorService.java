@@ -46,26 +46,28 @@ public class TwoFactorService {
         otp = otpCodeRepository.save(otp);
 
         // Try sending email, fallback to console log
-        try {
-            if (mailSender != null && fromEmail != null && !fromEmail.isBlank()) {
-                SimpleMailMessage message = new SimpleMailMessage();
-                message.setFrom(fromEmail);
-                message.setTo(email);
-                message.setSubject("🔐 Votre code de vérification ATS Intelligent");
-                message.setText(
-                    "Bonjour,\n\n" +
-                    "Votre code de vérification est : " + code + "\n\n" +
-                    "Ce code expire dans 10 minutes.\n\n" +
-                    "Si vous n'avez pas demandé ce code, ignorez cet email.\n\n" +
-                    "— L'équipe ATS Intelligent"
-                );
-                mailSender.send(message);
-                log.info("2FA OTP sent by email to: {}", email);
-            } else {
-                log.warn("SMTP not configured. OTP for {} : {}", email, code);
-            }
-        } catch (Exception e) {
-            log.error("Failed to send OTP email, code logged: {} for {}", code, email);
+        if (mailSender != null && fromEmail != null && !fromEmail.isBlank()) {
+            java.util.concurrent.CompletableFuture.runAsync(() -> {
+                try {
+                    SimpleMailMessage message = new SimpleMailMessage();
+                    message.setFrom(fromEmail);
+                    message.setTo(email);
+                    message.setSubject("🔐 Votre code de vérification ATS Intelligent");
+                    message.setText(
+                        "Bonjour,\n\n" +
+                        "Votre code de vérification est : " + code + "\n\n" +
+                        "Ce code expire dans 10 minutes.\n\n" +
+                        "Si vous n'avez pas demandé ce code, ignorez cet email.\n\n" +
+                        "— L'équipe ATS Intelligent"
+                    );
+                    mailSender.send(message);
+                    log.info("2FA OTP sent by email to: {}", email);
+                } catch (Exception e) {
+                    log.error("Failed to send OTP email, code logged: {} for {}", code, email);
+                }
+            });
+        } else {
+            log.warn("SMTP not configured. OTP for {} : {}", email, code);
         }
 
         return otp;
