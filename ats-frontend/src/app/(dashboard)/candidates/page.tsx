@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Search, Download, Upload, Loader2, Users, Mail, X, Link2, AlertCircle, CheckCircle2, ChevronDown, FileText, Trash2, Eye, CloudUpload, Filter, SortAsc, SortDesc } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Search, Download, Upload, Loader2, Users, Mail, X, Link2, AlertCircle, CheckCircle2, ChevronDown, FileText, Trash2, Eye, CloudUpload, Filter, SortAsc, SortDesc, RefreshCw } from 'lucide-react';
 import { api, FichePoste } from '../../../services/api';
 import { useRouter } from 'next/navigation';
 
@@ -71,12 +71,23 @@ export default function CandidatesPage() {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    Promise.all([api.getCandidats(), api.getJobs()])
-      .then(([c, j]) => { setCandidats(c); setJobs(j.filter((j: FichePoste) => j.statut === 'OUVERT')); })
-      .catch(err => setError(err.message))
-      .finally(() => setLoading(false));
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const [c, j] = await Promise.all([api.getCandidats(), api.getJobs()]);
+      setCandidats(c);
+      setJobs(j.filter((j: FichePoste) => j.statut === 'OUVERT'));
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const filtered = candidats
     .filter(c => {
@@ -202,6 +213,13 @@ export default function CandidatesPage() {
           <p className="text-sm text-gray-500 mt-1">{candidats.length} candidate{candidats.length !== 1 ? 's' : ''} in database</p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={loadData}
+            disabled={loading}
+            className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Rafraîchir
+          </button>
           <button
             onClick={exportCSV}
             className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"

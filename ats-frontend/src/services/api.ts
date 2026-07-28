@@ -136,7 +136,7 @@ const request = async <T>(
   };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const response = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  const response = await fetch(`${BASE_URL}${path}`, { ...options, headers, cache: 'no-store' });
 
   if (response.status === 401) {
     await auth.clearSession();

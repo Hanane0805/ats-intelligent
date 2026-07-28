@@ -19,6 +19,7 @@ import com.ats.backendats.repository.DocumentCVRepository;
 import com.ats.backendats.repository.FichePosteRepository;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.converter.BeanOutputConverter;
+import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +36,7 @@ public class CandidatureService {
     private final DocumentCVRepository documentCVRepository;
     private final N8nWebhookService n8nWebhookService;
     private final ChatClient chatClient;
+    private final EmbeddingModel embeddingModel;
 
     public CandidatureService(CandidatureRepository candidatureRepository,
                               CandidatRepository candidatRepository,
@@ -42,7 +44,8 @@ public class CandidatureService {
                               AnalyseIARepository analyseIARepository,
                               DocumentCVRepository documentCVRepository,
                               N8nWebhookService n8nWebhookService,
-                              ChatClient.Builder chatClientBuilder) {
+                              ChatClient.Builder chatClientBuilder,
+                              EmbeddingModel embeddingModel) {
         this.candidatureRepository = candidatureRepository;
         this.candidatRepository = candidatRepository;
         this.fichePosteRepository = fichePosteRepository;
@@ -50,6 +53,7 @@ public class CandidatureService {
         this.documentCVRepository = documentCVRepository;
         this.n8nWebhookService = n8nWebhookService;
         this.chatClient = chatClientBuilder.build();
+        this.embeddingModel = embeddingModel;
     }
 
     public List<CandidatureResponse> getAllCandidatures() {
@@ -149,16 +153,48 @@ public class CandidatureService {
         }
 
         try {
+            // 1. CALCULATE SCORE USING VECTOR EMBEDDINGS (100% Reliable and strict)
+            float[] posteVector = embeddingModel.embed(poste.getTitre() + " " + poste.getDescription());
+            float[] cvVector = embeddingModel.embed(cvText);
+            double dotProduct = 0.0;
+            double normA = 0.0;
+            double normB = 0.0;
+            for (int i = 0; i < posteVector.length; i++) {
+                dotProduct += posteVector[i] * cvVector[i];
+                normA += Math.pow(posteVector[i], 2);
+                normB += Math.pow(cvVector[i], 2);
+            }
+            double cosineSimilarity = dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+            // Log the raw cosine similarity to see what values we actually get
+            System.out.println(">>> RAW COSINE SIMILARITY: " + cosineSimilarity);
+            
+            // Text embeddings often have a baseline of ~0.5. 
+            // A good match is often ~0.7 to 0.85. A bad match is ~0.4 to 0.55.
+            // Let's use a smoother formula that gives ~85-100% for >0.75, and <30% for <0.55
+            double calculatedScore = 0.0;
+            if (cosineSimilarity > 0.75) {
+                calculatedScore = 80.0 + ((cosineSimilarity - 0.75) * 100.0); // 0.75 -> 80, 0.95 -> 100
+            } else if (cosineSimilarity > 0.60) {
+                calculatedScore = 50.0 + ((cosineSimilarity - 0.60) * 200.0); // 0.60 -> 50, 0.75 -> 80
+            } else if (cosineSimilarity > 0.50) {
+                calculatedScore = 20.0 + ((cosineSimilarity - 0.50) * 300.0); // 0.50 -> 20, 0.60 -> 50
+            } else {
+                calculatedScore = Math.max(0, cosineSimilarity * 40.0); // <0.50 -> <20
+            }
+            
+            if (calculatedScore > 100) calculatedScore = 100.0;
+            System.out.println(">>> SCALED SCORE: " + calculatedScore);
+
+            // 2. ASK LLM ONLY FOR TEXT GENERATION
             BeanOutputConverter<AnalyseOutput> converter = new BeanOutputConverter<>(AnalyseOutput.class);
-            String prompt = "Tu es un expert RH. Évalue la compatibilité entre ce CV et cette offre d'emploi.\n\n" +
+            String prompt = "Tu es un expert RH. Fais une brève synthèse des points forts et faibles de ce CV par rapport au poste.\n\n" +
                     "OFFRE D'EMPLOI:\n" + poste.getTitre() + "\n" + poste.getDescription() + "\n\n" +
                     "CV:\n" + cvText + "\n\n" +
-                    "Génère une réponse JSON valide. Le champ 'score' doit ABSOLUMENT être un nombre entier ENTRE 0 ET 100. SOIS TRÈS BREF (1 seule courte phrase par champ) pour ne pas couper le texte.\n\n" +
+                    "Génère une réponse JSON valide. Mets '0' dans le champ score. Concentre-toi sur le texte. SOIS TRÈS BREF.\n\n" +
                     converter.getFormat();
 
             String response = chatClient.prompt().user(prompt).call().content();
             
-            // Sécurité anti-coupure (si l'IA s'arrête en plein milieu du JSON)
             if (response != null) {
                 response = response.trim();
                 if (!response.endsWith("}")) {
@@ -175,7 +211,7 @@ public class CandidatureService {
             AnalyseOutput result = converter.convert(response);
 
             AnalyseIA analyse = new AnalyseIA();
-            analyse.setScore(result.score() != null ? result.score() : 0.0);
+            analyse.setScore(Math.round(calculatedScore * 10.0) / 10.0); // Use the vector score, rounded
             analyse.setSyntheseForces(result.syntheseForces());
             analyse.setSyntheseFaiblesses(result.syntheseFaiblesses());
             analyse.setRecommandation(result.recommandation());

@@ -26,7 +26,7 @@ services:
       SPRING_DATASOURCE_PASSWORD: postgres
       SPRING_AI_OLLAMA_BASE_URL: http://ollama:11434
       SPRING_AI_OLLAMA_CHAT_OPTIONS_MODEL: llama3.2:1b
-      SPRING_AI_OLLAMA_EMBEDDING_OPTIONS_MODEL: llama3.2:1b
+      SPRING_AI_OLLAMA_EMBEDDING_OPTIONS_MODEL: nomic-embed-text
       N8N_ENABLED: ${N8N_ENABLED:-true}
       N8N_API_KEY: ${N8N_API_KEY:-changez-moi-en-production}
       N8N_WEBHOOK_CANDIDATURE_CREATED: http://n8n:5678/webhook/candidature-created

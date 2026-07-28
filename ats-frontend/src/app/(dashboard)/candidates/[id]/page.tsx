@@ -26,6 +26,7 @@ async function fetchCVs(candidatId: number): Promise<any[]> {
   const token = localStorage.getItem('ats_token');
   const res = await fetch(`${API_BASE}/api/documents-cv/candidat/${candidatId}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
+    cache: 'no-store'
   });
   if (!res.ok) return [];
   return res.json();
