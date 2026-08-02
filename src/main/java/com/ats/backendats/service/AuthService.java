@@ -21,6 +21,9 @@ public class AuthService {
     private final JwtService jwtService;
     private final TwoFactorService twoFactorService;
 
+    @org.springframework.beans.factory.annotation.Value("${app.2fa.enabled:true}")
+    private boolean twoFaEnabled;
+
     // 30 days for "remember me", 24h otherwise
     private static final long SESSION_SHORT = 86400000L;      // 1 day
     private static final long SESSION_LONG  = 2592000000L;    // 30 days
@@ -28,16 +31,28 @@ public class AuthService {
     public AuthResponse login(LoginRequest request) {
         var admin = administrateurRepository.findByEmail(request.getEmail());
         if (admin.isPresent() && passwordEncoder.matches(request.getMotDePasse(), admin.get().getMotDePasse())) {
-            // Trigger 2FA
-            twoFactorService.generateAndSendOtp(request.getEmail(), request.isRememberMe());
-            return AuthResponse.pendingTwoFactor(request.getEmail());
+            if (twoFaEnabled) {
+                // Trigger 2FA
+                twoFactorService.generateAndSendOtp(request.getEmail(), request.isRememberMe());
+                return AuthResponse.pendingTwoFactor(request.getEmail());
+            } else {
+                long expiration = request.isRememberMe() ? SESSION_LONG : SESSION_SHORT;
+                String token = jwtService.generateToken(admin.get().getEmail(), "ADMIN", admin.get().getId(), expiration);
+                return new AuthResponse(token, "ADMIN", admin.get().getId(), admin.get().getEmail(), admin.get().getNom(), admin.get().getPrenom());
+            }
         }
 
         var recruteur = recruteurRepository.findByEmail(request.getEmail());
         if (recruteur.isPresent() && passwordEncoder.matches(request.getMotDePasse(), recruteur.get().getMotDePasse())) {
-            // Trigger 2FA
-            twoFactorService.generateAndSendOtp(request.getEmail(), request.isRememberMe());
-            return AuthResponse.pendingTwoFactor(request.getEmail());
+            if (twoFaEnabled) {
+                // Trigger 2FA
+                twoFactorService.generateAndSendOtp(request.getEmail(), request.isRememberMe());
+                return AuthResponse.pendingTwoFactor(request.getEmail());
+            } else {
+                long expiration = request.isRememberMe() ? SESSION_LONG : SESSION_SHORT;
+                String token = jwtService.generateToken(recruteur.get().getEmail(), "RECRUTEUR", recruteur.get().getId(), expiration);
+                return new AuthResponse(token, "RECRUTEUR", recruteur.get().getId(), recruteur.get().getEmail(), recruteur.get().getNom(), recruteur.get().getPrenom());
+            }
         }
 
         throw new RuntimeException("Email ou mot de passe incorrect");

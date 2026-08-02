@@ -35,18 +35,26 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String token = authHeader.substring(7);
             try {
                 String email = jwtService.extractEmail(token);
+                System.out.println("[JWT-DEBUG] Email extrait: " + email);
                 if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                     UserDetails userDetails = userDetailsService.loadUserByUsername(email);
+                    System.out.println("[JWT-DEBUG] User trouve: " + userDetails.getUsername() + " roles: " + userDetails.getAuthorities());
                     if (jwtService.isValid(token, userDetails)) {
                         UsernamePasswordAuthenticationToken authToken =
                                 new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
                         authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                         SecurityContextHolder.getContext().setAuthentication(authToken);
+                        System.out.println("[JWT-DEBUG] Auth reussie pour: " + email);
+                    } else {
+                        System.out.println("[JWT-ERROR] Token invalide pour: " + email);
                     }
                 }
             } catch (Exception e) {
-                // Token invalide, on continue sans auth
+                System.err.println("[JWT-ERROR] " + e.getMessage());
+                e.printStackTrace();
             }
+        } else {
+            System.out.println("[JWT-DEBUG] Pas de header Authorization pour: " + request.getRequestURI());
         }
         filterChain.doFilter(request, response);
     }

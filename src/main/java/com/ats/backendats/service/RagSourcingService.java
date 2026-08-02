@@ -1,14 +1,11 @@
 package com.ats.backendats.service;
+
 import com.ats.backendats.model.Candidat;
 import com.ats.backendats.model.DocumentCV;
 import com.ats.backendats.repository.CandidatRepository;
 import com.ats.backendats.repository.DocumentCVRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.document.Document;
-import org.springframework.ai.embedding.EmbeddingModel;
-import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -21,74 +18,70 @@ import java.util.stream.Collectors;
 @Slf4j
 public class RagSourcingService {
 
-    private final VectorStore vectorStore;
-    private final EmbeddingModel embeddingModel;
+    private final VectorSearchService vectorSearchService;
+    private final EmbeddingService embeddingService;
+    private final CVSectionChunker cvSectionChunker;
     private final CandidatRepository candidatRepository;
     private final DocumentCVRepository documentCVRepository;
 
-    /**
-     * Extracts text from CV and saves it to the vector store with metadata.
-     */
     public void embedCandidateCV(Candidat candidat, DocumentCV cv) {
         log.info("Embedding CV for candidate ID: {}", candidat.getId());
         try {
-            // Note: cv.getTexteBrut() contains the full text parsed by Tika
             String text = cv.getTexteBrut();
             if (text == null || text.isBlank()) {
-                log.warn("Cannot embed CV for candidate {} - text is empty", candidat.getId());
+                log.warn("CV vide pour candidat {}", candidat.getId());
                 return;
             }
 
-            // Create a Spring AI Document
-            Document doc = new Document(text, Map.of(
-                    "candidatId", candidat.getId(),
-                    "prenom", candidat.getPrenom() != null ? candidat.getPrenom() : "",
-                    "nom", candidat.getNom() != null ? candidat.getNom() : "",
-                    "email", candidat.getEmail() != null ? candidat.getEmail() : ""
-            ));
+            List<CVSectionChunker.CVChunk> chunks = cvSectionChunker.chunk(text);
+            List<String> chunkTexts = chunks.stream()
+                    .map(CVSectionChunker.CVChunk::toEmbeddingText)
+                    .collect(Collectors.toList());
 
-            // Generate embeddings and store in pgvector
-            // Internally, this chunks the document if a text splitter is configured or stores it if it fits the token limit.
-            vectorStore.add(List.of(doc));
-            
-            log.info("Successfully embedded CV for candidate ID: {}", candidat.getId());
+            float[][] embeddings = embeddingService.embedBatch(chunkTexts);
+
+            vectorSearchService.storeEmbeddings(candidat.getId(), chunkTexts, embeddings);
+
+            log.info("CV embedde avec succes pour candidat ID: {} ({} sections)", candidat.getId(), chunks.size());
         } catch (Exception e) {
-            log.error("Failed to embed CV for candidate {}", candidat.getId(), e);
+            log.error("Erreur embedding CV candidat {}", candidat.getId(), e);
         }
     }
 
-    /**
-     * Performs a semantic search across all embedded CVs.
-     * @param query The natural language search query.
-     * @param topK Number of top results to return.
-     * @return List of matched candidates.
-     */
     public List<Candidat> semanticSearch(String query, int topK) {
-        log.info("Performing semantic search for query: '{}', topK: {}", query, topK);
-        
-        SearchRequest request = SearchRequest.builder().query(query).topK(topK).build();
-        List<Document> similarDocuments = vectorStore.similaritySearch(request);
+        log.info("Recherche semantique: '{}', topK: {}", query, topK);
 
-        return similarDocuments.stream()
-                .map(doc -> {
-                    Object idObj = doc.getMetadata().get("candidatId");
-                    if (idObj == null) return null;
-                    Long candidatId = Long.valueOf(idObj.toString());
-                    return candidatRepository.findById(candidatId).orElse(null);
-                })
-                .filter(c -> c != null)
-                .distinct() // Remove duplicates if multiple chunks belonged to same CV
-                .collect(Collectors.toList());
+        try {
+            float[] queryEmbedding = embeddingService.embed(query);
+
+            List<VectorSearchService.GlobalRetrievalResult> results =
+                    vectorSearchService.searchGlobal(queryEmbedding, topK);
+
+            List<Long> candidatIds = results.stream()
+                    .map(VectorSearchService.GlobalRetrievalResult::candidatId)
+                    .filter(id -> id != null)
+                    .distinct()
+                    .collect(Collectors.toList());
+
+            log.info("{} candidats trouves pour la recherche", candidatIds.size());
+
+            return candidatIds.stream()
+                    .map(candidatRepository::findById)
+                    .filter(Optional::isPresent)
+                    .map(Optional::get)
+                    .collect(Collectors.toList());
+
+        } catch (Exception e) {
+            log.error("Erreur recherche semantique: {}", e.getMessage());
+            return List.of();
+        }
     }
 
-    /**
-     * Utility method to embed all existing CVs in the database.
-     */
     public int embedAllExistingCVs() {
-        log.info("Starting batch embedding of all existing CVs...");
+        log.info("Embedding en lot de tous les CVs...");
         List<Candidat> candidats = candidatRepository.findAll();
         int count = 0;
-        
+
         for (Candidat c : candidats) {
             List<DocumentCV> cvs = documentCVRepository.findByCandidatId(c.getId());
             if (!cvs.isEmpty() && cvs.get(0).getTexteBrut() != null) {
@@ -96,8 +89,8 @@ public class RagSourcingService {
                 count++;
             }
         }
-        
-        log.info("Successfully embedded {} CVs", count);
+
+        log.info("{} CVs embeddes avec succes", count);
         return count;
     }
 }

@@ -20,7 +20,6 @@ public class RagSourcingController {
     public ResponseEntity<List<Candidat>> semanticSearch(
             @RequestParam String query,
             @RequestParam(defaultValue = "10") int topK) {
-        
         List<Candidat> results = ragSourcingService.semanticSearch(query, topK);
         return ResponseEntity.ok(results);
     }
@@ -29,7 +28,7 @@ public class RagSourcingController {
     public ResponseEntity<Map<String, Object>> embedAllExistingCVs() {
         int count = ragSourcingService.embedAllExistingCVs();
         return ResponseEntity.ok(Map.of(
-                "message", "Successfully embedded CVs.",
+                "message", "CVs embeddes avec succes (RAG pur)",
                 "count", count
         ));
     }

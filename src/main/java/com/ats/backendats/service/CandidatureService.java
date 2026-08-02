@@ -17,13 +17,10 @@ import com.ats.backendats.repository.CandidatRepository;
 import com.ats.backendats.repository.CandidatureRepository;
 import com.ats.backendats.repository.DocumentCVRepository;
 import com.ats.backendats.repository.FichePosteRepository;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.converter.BeanOutputConverter;
-import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -35,8 +32,7 @@ public class CandidatureService {
     private final AnalyseIARepository analyseIARepository;
     private final DocumentCVRepository documentCVRepository;
     private final N8nWebhookService n8nWebhookService;
-    private final ChatClient chatClient;
-    private final EmbeddingModel embeddingModel;
+    private final RagScoringService ragScoringService;
 
     public CandidatureService(CandidatureRepository candidatureRepository,
                               CandidatRepository candidatRepository,
@@ -44,16 +40,14 @@ public class CandidatureService {
                               AnalyseIARepository analyseIARepository,
                               DocumentCVRepository documentCVRepository,
                               N8nWebhookService n8nWebhookService,
-                              ChatClient.Builder chatClientBuilder,
-                              EmbeddingModel embeddingModel) {
+                              RagScoringService ragScoringService) {
         this.candidatureRepository = candidatureRepository;
         this.candidatRepository = candidatRepository;
         this.fichePosteRepository = fichePosteRepository;
         this.analyseIARepository = analyseIARepository;
         this.documentCVRepository = documentCVRepository;
         this.n8nWebhookService = n8nWebhookService;
-        this.chatClient = chatClientBuilder.build();
-        this.embeddingModel = embeddingModel;
+        this.ragScoringService = ragScoringService;
     }
 
     public List<CandidatureResponse> getAllCandidatures() {
@@ -64,7 +58,7 @@ public class CandidatureService {
 
     public CandidatureResponse getCandidatureById(Long id) {
         Candidature candidature = candidatureRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Candidature non trouvée avec l'ID : " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Candidature non trouvee avec l'ID : " + id));
         return toResponse(candidature);
     }
 
@@ -90,11 +84,11 @@ public class CandidatureService {
     @Transactional
     public CandidatureResponse createCandidature(CandidatureRequest request) {
         Candidat candidat = candidatRepository.findById(request.getCandidatId())
-                .orElseThrow(() -> new ResourceNotFoundException("Candidat non trouvé avec l'ID : " + request.getCandidatId()));
+                .orElseThrow(() -> new ResourceNotFoundException("Candidat non trouve avec l'ID : " + request.getCandidatId()));
         FichePoste fichePoste = fichePosteRepository.findById(request.getFichePosteId())
-                .orElseThrow(() -> new ResourceNotFoundException("Fiche de poste non trouvée avec l'ID : " + request.getFichePosteId()));
+                .orElseThrow(() -> new ResourceNotFoundException("Fiche de poste non trouvee avec l'ID : " + request.getFichePosteId()));
         if (candidatureRepository.existsByCandidatIdAndFichePosteId(request.getCandidatId(), request.getFichePosteId())) {
-            throw new BadRequestException("Ce candidat a déjà postulé à cette offre");
+            throw new BadRequestException("Ce candidat a deja postule a cette offre");
         }
         Candidature candidature = new Candidature();
         candidature.setCandidat(candidat);
@@ -109,7 +103,7 @@ public class CandidatureService {
     @Transactional
     public CandidatureResponse updateCandidature(Long id, CandidatureUpdateRequest request) {
         Candidature candidature = candidatureRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Candidature non trouvée avec l'ID : " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Candidature non trouvee avec l'ID : " + id));
         String ancienStatut = candidature.getStatut() != null ? candidature.getStatut().name() : null;
         if (request.getStatut() != null) {
             candidature.setStatut(StatutCandidature.valueOf(request.getStatut().toUpperCase()));
@@ -125,102 +119,70 @@ public class CandidatureService {
     @Transactional
     public void deleteCandidature(Long id) {
         if (!candidatureRepository.existsById(id)) {
-            throw new ResourceNotFoundException("Candidature non trouvée avec l'ID : " + id);
+            throw new ResourceNotFoundException("Candidature non trouvee avec l'ID : " + id);
         }
         candidatureRepository.deleteById(id);
     }
 
-    public record AnalyseOutput(Double score, String syntheseForces, String syntheseFaiblesses, String recommandation) {}
-
     @Transactional
     public CandidatureResponse analyzeCandidature(Long candidatureId) {
         Candidature candidature = candidatureRepository.findById(candidatureId)
-                .orElseThrow(() -> new ResourceNotFoundException("Candidature non trouvée avec l'ID : " + candidatureId));
-        
+                .orElseThrow(() -> new ResourceNotFoundException("Candidature non trouvee avec l'ID : " + candidatureId));
+
         candidature.setStatut(StatutCandidature.EN_ANALYSE);
         candidatureRepository.save(candidature);
 
         FichePoste poste = candidature.getFichePoste();
-        if (poste == null) throw new BadRequestException("Aucune fiche de poste associée.");
+        if (poste == null) throw new BadRequestException("Aucune fiche de poste associee.");
 
-        List<DocumentCV> cvs = documentCVRepository.findByCandidatId(candidature.getCandidat().getId());
+        Candidat candidat = candidature.getCandidat();
+        String candidatNom = (candidat.getNom() != null ? candidat.getNom() : "")
+                + " " + (candidat.getPrenom() != null ? candidat.getPrenom() : "");
+
+        List<DocumentCV> cvs = documentCVRepository.findByCandidatId(candidat.getId());
         String cvText = "Aucun CV fourni.";
         if (!cvs.isEmpty()) {
             cvText = cvs.get(0).getTexteBrut();
         }
-        if (cvText != null && cvText.length() > 3000) {
-            cvText = cvText.substring(0, 3000); // Limit size for lightweight LLM
+        if (cvText == null || cvText.isBlank()) {
+            cvText = "Aucun CV fourni.";
         }
 
+        String jobDescription = poste.getTitre() + " " + (poste.getDescription() != null ? poste.getDescription() : "");
+
         try {
-            // 1. CALCULATE SCORE USING VECTOR EMBEDDINGS (100% Reliable and strict)
-            float[] posteVector = embeddingModel.embed(poste.getTitre() + " " + poste.getDescription());
-            float[] cvVector = embeddingModel.embed(cvText);
-            double dotProduct = 0.0;
-            double normA = 0.0;
-            double normB = 0.0;
-            for (int i = 0; i < posteVector.length; i++) {
-                dotProduct += posteVector[i] * cvVector[i];
-                normA += Math.pow(posteVector[i], 2);
-                normB += Math.pow(cvVector[i], 2);
-            }
-            double cosineSimilarity = dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-            // Log the raw cosine similarity to see what values we actually get
-            System.out.println(">>> RAW COSINE SIMILARITY: " + cosineSimilarity);
-            
-            // Text embeddings often have a baseline of ~0.5. 
-            // A good match is often ~0.7 to 0.85. A bad match is ~0.4 to 0.55.
-            // Let's use a smoother formula that gives ~85-100% for >0.75, and <30% for <0.55
-            double calculatedScore = 0.0;
-            if (cosineSimilarity > 0.75) {
-                calculatedScore = 80.0 + ((cosineSimilarity - 0.75) * 100.0); // 0.75 -> 80, 0.95 -> 100
-            } else if (cosineSimilarity > 0.60) {
-                calculatedScore = 50.0 + ((cosineSimilarity - 0.60) * 200.0); // 0.60 -> 50, 0.75 -> 80
-            } else if (cosineSimilarity > 0.50) {
-                calculatedScore = 20.0 + ((cosineSimilarity - 0.50) * 300.0); // 0.50 -> 20, 0.60 -> 50
-            } else {
-                calculatedScore = Math.max(0, cosineSimilarity * 40.0); // <0.50 -> <20
-            }
-            
-            if (calculatedScore > 100) calculatedScore = 100.0;
-            System.out.println(">>> SCALED SCORE: " + calculatedScore);
+            Map<String, Object> ragResult = ragScoringService.scoreWithRAG(
+                    candidat.getId(),
+                    candidatNom.trim(),
+                    poste.getId(),
+                    poste.getTitre(),
+                    cvText,
+                    jobDescription
+            );
 
-            // 2. ASK LLM ONLY FOR TEXT GENERATION
-            BeanOutputConverter<AnalyseOutput> converter = new BeanOutputConverter<>(AnalyseOutput.class);
-            String prompt = "Tu es un expert RH. Fais une brève synthèse des points forts et faibles de ce CV par rapport au poste.\n\n" +
-                    "OFFRE D'EMPLOI:\n" + poste.getTitre() + "\n" + poste.getDescription() + "\n\n" +
-                    "CV:\n" + cvText + "\n\n" +
-                    "Génère une réponse JSON valide. Mets '0' dans le champ score. Concentre-toi sur le texte. SOIS TRÈS BREF.\n\n" +
-                    converter.getFormat();
+            int score = ((Number) ragResult.get("score")).intValue();
+            String rawResponse = (String) ragResult.get("rawResponse");
 
-            String response = chatClient.prompt().user(prompt).call().content();
-            
-            if (response != null) {
-                response = response.trim();
-                if (!response.endsWith("}")) {
-                    if (response.endsWith("\"")) {
-                        response += "\n}";
-                    } else if (response.endsWith(",")) {
-                        response = response.substring(0, response.length() - 1) + "\n}";
-                    } else {
-                        response += "\"\n}";
-                    }
-                }
-            }
-            
-            AnalyseOutput result = converter.convert(response);
+            String syntheseForces = extractJsonStringField(rawResponse, "analyse");
+            String competencesMatch = extractJsonListAsString(rawResponse, "competencesMatch");
+            String competencesManquantes = extractJsonListAsString(rawResponse, "competencesManquantes");
+
+            String forcesText = (competencesMatch != null && !competencesMatch.isEmpty())
+                    ? competencesMatch : (syntheseForces != null ? syntheseForces : "Analyse en cours");
+            String faiblessesText = (competencesManquantes != null && !competencesManquantes.isEmpty())
+                    ? competencesManquantes : "Aucune faiblesse majeure identifiee";
+            String recommandation = syntheseForces != null ? syntheseForces : "Candidature a evaluer en entretien.";
 
             AnalyseIA analyse = new AnalyseIA();
-            analyse.setScore(Math.round(calculatedScore * 10.0) / 10.0); // Use the vector score, rounded
-            analyse.setSyntheseForces(result.syntheseForces());
-            analyse.setSyntheseFaiblesses(result.syntheseFaiblesses());
-            analyse.setRecommandation(result.recommandation());
+            analyse.setScore(Math.round(score * 10.0) / 10.0);
+            analyse.setSyntheseForces(forcesText);
+            analyse.setSyntheseFaiblesses(faiblessesText);
+            analyse.setRecommandation(recommandation);
             analyse.setDateAnalyse(java.time.LocalDate.now());
-            
             analyse = analyseIARepository.save(analyse);
-            
+
             candidature.setAnalyseIA(analyse);
-            candidature.setScoreCompatibilite(analyse.getScore() / 100.0); // Normalize to 0-1 for DB
+            candidature.setScoreCompatibilite(analyse.getScore() / 100.0);
             candidature.setStatut(StatutCandidature.EN_ATTENTE);
             candidature = candidatureRepository.save(candidature);
 
@@ -228,11 +190,54 @@ public class CandidatureService {
             return toResponse(candidature);
 
         } catch (Exception e) {
-            System.err.println("Erreur LLM lors de l'analyse : " + e.getMessage());
+            System.err.println("Erreur RAG lors de l'analyse : " + e.getMessage());
+            e.printStackTrace();
             candidature.setStatut(StatutCandidature.EN_ATTENTE);
             candidatureRepository.save(candidature);
-            throw new BadRequestException("L'analyse IA a échoué : " + e.getMessage());
+            throw new BadRequestException("L'analyse IA a echoue : " + e.getMessage());
         }
+    }
+
+    private String extractJsonStringField(String json, String fieldName) {
+        if (json == null) return null;
+        String searchKey = "\"" + fieldName + "\":";
+        int idx = json.indexOf(searchKey);
+        if (idx < 0) return null;
+        int startQuote = json.indexOf("\"", idx + searchKey.length());
+        if (startQuote < 0) return null;
+        int end = startQuote + 1;
+        while (end < json.length()) {
+            char c = json.charAt(end);
+            if (c == '\\' && end + 1 < json.length()) {
+                end += 2;
+                continue;
+            }
+            if (c == '"') break;
+            end++;
+        }
+        String value = json.substring(startQuote + 1, end);
+        value = value.replace("\\n", " ").replace("\\t", " ");
+        if (value.trim().isEmpty()) return null;
+        return value;
+    }
+
+    private String extractJsonListAsString(String json, String fieldName) {
+        if (json == null) return null;
+        String searchKey = "\"" + fieldName + "\":";
+        int idx = json.indexOf(searchKey);
+        if (idx < 0) return null;
+        int start = json.indexOf("[", idx + searchKey.length());
+        if (start < 0) return null;
+        int end = json.indexOf("]", start);
+        if (end < 0) return null;
+        String listContent = json.substring(start + 1, end);
+        StringBuilder result = new StringBuilder();
+        String[] parts = listContent.split("\"");
+        for (int i = 1; i < parts.length; i += 2) {
+            if (i > 1) result.append(", ");
+            result.append(parts[i]);
+        }
+        return result.length() > 0 ? result.toString() : null;
     }
 
     private CandidatureResponse toResponse(Candidature c) {

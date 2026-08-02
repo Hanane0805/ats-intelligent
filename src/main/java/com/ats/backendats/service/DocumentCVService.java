@@ -9,19 +9,18 @@ import com.ats.backendats.model.DocumentCV;
 import com.ats.backendats.repository.CandidatRepository;
 import com.ats.backendats.repository.CVChunkRepository;
 import com.ats.backendats.repository.DocumentCVRepository;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.tika.Tika;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.converter.BeanOutputConverter;
-import org.springframework.ai.embedding.EmbeddingModel;
-import org.springframework.ai.transformer.splitter.TokenTextSplitter;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.time.LocalDate;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -30,32 +29,33 @@ public class DocumentCVService {
     private final DocumentCVRepository documentCVRepository;
     private final CandidatRepository candidatRepository;
     private final CVChunkRepository cvChunkRepository;
-    private final ChatClient chatClient;
-    private final EmbeddingModel embeddingModel;
+    private final CVSectionChunker cvSectionChunker;
+    private final EmbeddingService embeddingService;
+    private final RagSourcingService ragSourcingService;
     private final Tika tika;
-    private final org.springframework.context.ApplicationContext applicationContext;
-    private RagSourcingService ragSourcingService;
+
+    @Value("${rag.gemini.api-key:}")
+    private String geminiApiKey;
+
+    @Value("${rag.gemini.model:gemini-1.5-flash}")
+    private String geminiModel;
+
+    private final RestTemplate restTemplate = new RestTemplate();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public DocumentCVService(DocumentCVRepository documentCVRepository,
                              CandidatRepository candidatRepository,
                              CVChunkRepository cvChunkRepository,
-                             ChatClient.Builder chatClientBuilder,
-                             EmbeddingModel embeddingModel,
-                             org.springframework.context.ApplicationContext applicationContext) {
+                             CVSectionChunker cvSectionChunker,
+                             EmbeddingService embeddingService,
+                             RagSourcingService ragSourcingService) {
         this.documentCVRepository = documentCVRepository;
         this.candidatRepository = candidatRepository;
         this.cvChunkRepository = cvChunkRepository;
-        this.chatClient = chatClientBuilder.build();
-        this.embeddingModel = embeddingModel;
-        this.applicationContext = applicationContext;
+        this.cvSectionChunker = cvSectionChunker;
+        this.embeddingService = embeddingService;
+        this.ragSourcingService = ragSourcingService;
         this.tika = new Tika();
-    }
-
-    private RagSourcingService getRagSourcingService() {
-        if (ragSourcingService == null) {
-            ragSourcingService = applicationContext.getBean(RagSourcingService.class);
-        }
-        return ragSourcingService;
     }
 
     public List<DocumentCVResponse> getAllDocuments() {
@@ -72,18 +72,17 @@ public class DocumentCVService {
 
     public DocumentCVResponse getDocumentById(Long id) {
         DocumentCV doc = documentCVRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Document CV non trouvé avec l'ID : " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Document CV non trouve avec l'ID : " + id));
         return toResponse(doc);
     }
 
     @Transactional
     public DocumentCVResponse uploadDocument(Long candidatId, MultipartFile file) {
         Candidat candidat = candidatRepository.findById(candidatId)
-                .orElseThrow(() -> new ResourceNotFoundException("Candidat non trouvé avec l'ID : " + candidatId));
+                .orElseThrow(() -> new ResourceNotFoundException("Candidat non trouve avec l'ID : " + candidatId));
         if (file.isEmpty()) {
             throw new BadRequestException("Le fichier est vide");
         }
-        
         return processAndSaveDocument(candidat, file);
     }
 
@@ -91,7 +90,6 @@ public class DocumentCVService {
         if (file.isEmpty()) {
             throw new BadRequestException("Le fichier est vide");
         }
-
         String texteBrut;
         try {
             texteBrut = tika.parseToString(file.getInputStream());
@@ -101,17 +99,12 @@ public class DocumentCVService {
         } catch (Exception e) {
             throw new BadRequestException("Erreur lors de la lecture du fichier : " + e.getMessage());
         }
-
-        // Tenter l'extraction IA AVANT la transaction (évite le rollback sur erreur 429)
-        CandidatExtractionResponse extraction = tryExtractWithAI(texteBrut, file.getOriginalFilename());
-
-        // Sauvegarder dans une transaction séparée
+        CandidatExtractionResponse extraction = tryExtractWithGemini(texteBrut, file.getOriginalFilename());
         return saveCandidatAndDocument(extraction, texteBrut, file.getOriginalFilename());
     }
 
     @Transactional
     public DocumentCVResponse saveCandidatAndDocument(CandidatExtractionResponse extraction, String texteBrut, String filename) {
-        // Chercher un candidat existant ou le créer
         Optional<Candidat> existingCandidat = (extraction.getEmail() != null && !extraction.getEmail().isEmpty())
                 ? candidatRepository.findByEmail(extraction.getEmail())
                 : Optional.empty();
@@ -133,7 +126,6 @@ public class DocumentCVService {
             candidat = candidatRepository.save(candidat);
         }
 
-        // Sauvegarder le DocumentCV
         DocumentCV document = new DocumentCV();
         document.setCandidat(candidat);
         document.setNomFichier(filename);
@@ -141,110 +133,167 @@ public class DocumentCVService {
         document.setTexteBrut(texteBrut);
         document = documentCVRepository.save(document);
 
-        // Process chunks (RAG Setup)
         try {
-            TokenTextSplitter splitter = new TokenTextSplitter();
-            java.util.List<org.springframework.ai.document.Document> documents = splitter.split(
-                java.util.Collections.singletonList(new org.springframework.ai.document.Document(texteBrut)));
-            
-            for (int i = 0; i < documents.size(); i++) {
-                String chunkText = documents.get(i).getText();
-                float[] embedding = embeddingModel.embed(chunkText);
-                
-                com.ats.backendats.model.CVChunk cvChunk = new com.ats.backendats.model.CVChunk();
-                cvChunk.setContenuTexte(chunkText);
-                cvChunk.setVecteurEmbedding(embedding);
-                cvChunk.setIndexOrdre(i);
-                cvChunk.setDocumentCV(document);
-                cvChunkRepository.save(cvChunk);
+            List<CVSectionChunker.CVChunk> cvChunks = cvSectionChunker.chunk(texteBrut);
+            int globalIndex = 0;
+            for (CVSectionChunker.CVChunk cvChunk : cvChunks) {
+                float[] embedding = embeddingService.embed(cvChunk.toEmbeddingText());
+                com.ats.backendats.model.CVChunk relationalChunk = new com.ats.backendats.model.CVChunk();
+                relationalChunk.setContenuTexte(cvChunk.content());
+                relationalChunk.setVecteurEmbedding(embedding);
+                relationalChunk.setIndexOrdre(globalIndex);
+                relationalChunk.setDocumentCV(document);
+                cvChunkRepository.save(relationalChunk);
+                globalIndex++;
             }
+            System.out.println("[RAG-Document] " + cvChunks.size() + " chunks CV-aware crees pour candidat " + candidat.getId());
         } catch (Exception e) {
-            System.err.println("Erreur lors de la création des chunks RAG (relationnels): " + e.getMessage());
+            System.err.println("[RAG-Document] Erreur chunks: " + e.getMessage());
         }
 
-        // Push to Vector Store for Semantic Search
         try {
-            getRagSourcingService().embedCandidateCV(candidat, document);
+            ragSourcingService.embedCandidateCV(candidat, document);
         } catch (Exception e) {
-            System.err.println("Erreur lors du push dans le VectorStore: " + e.getMessage());
+            System.err.println("[RAG-Document] Erreur PgVector: " + e.getMessage());
         }
 
         return toResponse(document);
     }
 
-    /**
-     * Tente d'extraire les infos du CV avec l'IA.
-     * Si l'IA échoue (quota, erreur réseau...), utilise une extraction basique par regex.
-     */
-    private CandidatExtractionResponse tryExtractWithAI(String texteBrut, String filename) {
+    private CandidatExtractionResponse tryExtractWithGemini(String texteBrut, String filename) {
         try {
-            BeanOutputConverter<CandidatExtractionResponse> converter = new BeanOutputConverter<>(CandidatExtractionResponse.class);
-            
-            // RAG Retrieval for extraction: We use the embedding of the prompt itself to find relevant info
-            String query = "informations personnelles email nom prenom candidat";
-            float[] queryVector = embeddingModel.embed(query);
-            // Conversion vector to string for postgres pgvector 'findNearestChunks'
-            String vectorString = java.util.Arrays.toString(queryVector);
-            List<com.ats.backendats.model.CVChunk> relevantChunks = cvChunkRepository.findNearestChunks(vectorString, 3);
-            
-            String context = relevantChunks.stream()
-                .map(com.ats.backendats.model.CVChunk::getContenuTexte)
-                .collect(Collectors.joining("\n"));
-            
-            if (context.isEmpty()) {
-                context = texteBrut.length() > 3000 ? texteBrut.substring(0, 3000) : texteBrut;
+            String limitedText = texteBrut.length() > 3000 ? texteBrut.substring(0, 3000) : texteBrut;
+
+            String prompt = "Tu es un assistant de recrutement. Extrait les informations personnelles du candidat."
+                    + " Si une information n'est pas trouvee, laisse le champ vide."
+                    + "\n\nCV:\n" + limitedText
+                    + "\n\nReponds UNIQUEMENT en JSON valide :"
+                    + "\n{\"nom\": \"<nom>\", \"prenom\": \"<prenom>\", \"email\": \"<email>\", \"telephone\": \"<telephone>\", \"adresse\": \"<adresse>\"}";
+
+            String response = callGemini(prompt);
+
+            CandidatExtractionResponse result = new CandidatExtractionResponse();
+            result.setNom(extractJsonStringField(response, "nom"));
+            result.setPrenom(extractJsonStringField(response, "prenom"));
+            result.setEmail(extractJsonStringField(response, "email"));
+
+
+
+            if (result.getNom() != null || result.getPrenom() != null ||
+                    (result.getEmail() != null && !result.getEmail().isEmpty())) {
+                return result;
             }
-
-            String prompt = "Tu es un assistant de recrutement. Extrait les informations personnelles du candidat à partir du texte de CV suivant. " +
-                    "Si une information n'est pas trouvée, laisse le champ vide ou null.\n\n" +
-                    "Contexte pertinent du CV:\n" + context +
-                    "\n\n" + converter.getFormat();
-
-            String response = chatClient.prompt().user(prompt).call().content();
-            CandidatExtractionResponse result = converter.convert(response);
-            if (result != null) return result;
-        } catch (Throwable e) {
-            // Fallback si l'IA échoue (quota 429, NonTransientAiException, réseau, etc.)
-            System.err.println("[CV Analysis] IA indisponible, fallback regex: " + e.getMessage());
+        } catch (Exception e) {
+            System.err.println("[CV Analysis] Gemini indisponible, fallback regex: " + e.getMessage());
         }
-
-        // Fallback : extraction par regex
-        return extractWithRegex(texteBrut, filename);
+        return extractWithSimpleSearch(texteBrut, filename);
     }
 
-    /**
-     * Extraction basique par regex : email depuis le texte, nom depuis le nom du fichier.
-     */
-    private CandidatExtractionResponse extractWithRegex(String texteBrut, String filename) {
+    private String callGemini(String prompt) throws Exception {
+        String url = "https://generativelanguage.googleapis.com/v1beta/models/"
+                + geminiModel + ":generateContent?key=" + geminiApiKey;
+
+        Map<String, Object> requestBody = new LinkedHashMap<>();
+        requestBody.put("contents", List.of(
+                Map.of("parts", List.of(Map.of("text", prompt)))
+        ));
+        requestBody.put("generationConfig", Map.of(
+                "temperature", 0.1,
+                "maxOutputTokens", 512
+        ));
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                url, HttpMethod.POST, request, String.class
+        );
+
+        JsonNode root = objectMapper.readTree(response.getBody());
+        String text = root.path("candidates").get(0)
+                .path("content").path("parts").get(0)
+                .path("text").asText();
+
+        int backtickIdx = text.indexOf("```");
+        if (backtickIdx >= 0) {
+            int contentStart = text.indexOf("\n", backtickIdx);
+            if (contentStart >= 0) {
+                int contentEnd = text.indexOf("```", contentStart);
+                if (contentEnd < 0) contentEnd = text.length();
+                text = text.substring(contentStart, contentEnd).trim();
+            }
+        }
+        return text;
+    }
+
+    private String extractJsonStringField(String json, String fieldName) {
+        if (json == null) return null;
+        String searchKey = "\"" + fieldName + "\":";
+        int idx = json.indexOf(searchKey);
+        if (idx < 0) return null;
+        int startQuote = json.indexOf("\"", idx + searchKey.length());
+        if (startQuote < 0) return null;
+        int end = startQuote + 1;
+        while (end < json.length()) {
+            char c = json.charAt(end);
+            if (c == '\\' && end + 1 < json.length()) {
+                end += 2;
+                continue;
+            }
+            if (c == '"') break;
+            end++;
+        }
+        String value = json.substring(startQuote + 1, end);
+        value = value.replace("\\n", " ").replace("\\t", " ");
+        if (value.trim().isEmpty()) return null;
+        return value;
+    }
+
+    private CandidatExtractionResponse extractWithSimpleSearch(String texteBrut, String filename) {
         CandidatExtractionResponse result = new CandidatExtractionResponse();
 
-        // Extraire l'email
-        java.util.regex.Pattern emailPattern = java.util.regex.Pattern.compile(
-                "[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}");
-        java.util.regex.Matcher matcher = emailPattern.matcher(texteBrut);
-        if (matcher.find()) {
-            result.setEmail(matcher.group());
+        int atIdx = texteBrut.indexOf("@");
+        if (atIdx > 0) {
+            int start = atIdx - 1;
+            while (start > 0) {
+                char c = texteBrut.charAt(start - 1);
+                if (c == ' ' || c == '\n' || c == '\r' || c == '<' || c == '>') break;
+                start--;
+            }
+            int end = atIdx + 1;
+            while (end < texteBrut.length()) {
+                char c = texteBrut.charAt(end);
+                if (c == ' ' || c == '\n' || c == '\r' || c == '<' || c == '>' || c == ',') break;
+                end++;
+            }
+            result.setEmail(texteBrut.substring(start, end));
         }
 
-        // Extraire nom/prénom depuis le nom du fichier (ex: "John_Doe_CV.pdf" -> "John" "Doe")
         if (filename != null) {
-            String base = filename.replaceAll("(?i)[\\.](pdf|doc|docx)$", "")
-                    .replaceAll("[_\\-]", " ").trim();
-            // Supprimer mots génériques
-            base = base.replaceAll("(?i)(cv|resume|curriculum|vitae)", "").trim();
-            String[] parts = base.split("\\s+");
-            if (parts.length >= 2) {
-                result.setPrenom(parts[0]);
-                result.setNom(parts[1]);
-            } else if (parts.length == 1 && !parts[0].isEmpty()) {
-                result.setNom(parts[0]);
+            String base = filename.replace(".pdf", "").replace(".doc", "").replace(".docx", "")
+                    .replace("_", " ").replace("-", " ").trim();
+            base = base.toLowerCase().replace("cv", "").replace("resume", "")
+                    .replace("curriculum", "").replace("vitae", "").trim();
+            String[] parts = base.split(" ");
+            String[] nameParts = new String[2];
+            int nameCount = 0;
+            for (String part : parts) {
+                if (part.length() > 1 && nameCount < 2) {
+                    nameParts[nameCount] = part;
+                    nameCount++;
+                }
+            }
+            if (nameCount >= 2) {
+                result.setPrenom(nameParts[0]);
+                result.setNom(nameParts[1]);
+            } else if (nameCount == 1) {
+                result.setNom(nameParts[0]);
                 result.setPrenom("Import");
             }
         }
-
         return result;
     }
-
 
     private DocumentCVResponse processAndSaveDocument(Candidat candidat, MultipartFile file) {
         DocumentCV document = new DocumentCV();
@@ -263,7 +312,7 @@ public class DocumentCVService {
     @Transactional
     public void deleteDocument(Long id) {
         if (!documentCVRepository.existsById(id)) {
-            throw new ResourceNotFoundException("Document CV non trouvé avec l'ID : " + id);
+            throw new ResourceNotFoundException("Document CV non trouve avec l'ID : " + id);
         }
         documentCVRepository.deleteById(id);
     }
