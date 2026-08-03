@@ -23,10 +23,14 @@ const SESSION_COOKIE = 'ats_session';
  * exactly the bug that made the old middleware.ts silently stop protecting
  * most of the app.
  */
-const PUBLIC_PATHS = ['/', '/signup', '/register', '/forgot-password', '/auth/callback'];
+const PUBLIC_PATHS = ['/', '/signup', '/register', '/forgot-password', '/auth/callback', '/auth/google/callback'];
 
 /** Paths that should redirect an already-authenticated user away. */
 const AUTH_ONLY_PATHS = ['/', '/signup', '/register'];
+
+import { jwtDecode } from 'jwt-decode';
+
+const ADMIN_PATHS = ['/admin', '/users', '/roles', '/settings'];
 
 function matchesPath(pathname: string, path: string) {
   if (path === '/') return pathname === '/';
@@ -35,7 +39,8 @@ function matchesPath(pathname: string, path: string) {
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const hasSession = Boolean(request.cookies.get(SESSION_COOKIE)?.value);
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  const hasSession = Boolean(token);
 
   const isAuthOnlyPath = AUTH_ONLY_PATHS.some((path) => matchesPath(pathname, path));
   const isPublicPath = PUBLIC_PATHS.some((path) => matchesPath(pathname, path));
@@ -48,6 +53,22 @@ export function middleware(request: NextRequest) {
   // No session and trying to reach a protected page? Back to login.
   if (!hasSession && !isPublicPath) {
     return NextResponse.redirect(new URL('/', request.url));
+  }
+
+  // RBAC: Check admin paths
+  if (hasSession) {
+    const isAdminPath = ADMIN_PATHS.some((path) => matchesPath(pathname, path));
+    if (isAdminPath) {
+      try {
+        const decoded = jwtDecode<any>(token!);
+        const role = decoded.role;
+        if (role !== 'ADMIN' && role !== 'ROLE_ADMIN') {
+          return NextResponse.redirect(new URL('/dashboard', request.url));
+        }
+      } catch (e) {
+        // If token is malformed, backend will reject it anyway
+      }
+    }
   }
 
   return NextResponse.next();

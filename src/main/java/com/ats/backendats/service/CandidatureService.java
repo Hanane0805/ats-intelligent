@@ -2,6 +2,7 @@ package com.ats.backendats.service;
 
 import com.ats.backendats.dto.request.CandidatureRequest;
 import com.ats.backendats.dto.request.CandidatureUpdateRequest;
+import com.ats.backendats.dto.request.HistoriqueRecrutementRequest;
 import com.ats.backendats.dto.response.AnalyseIAResponse;
 import com.ats.backendats.dto.response.CandidatureResponse;
 import com.ats.backendats.exception.BadRequestException;
@@ -33,6 +34,7 @@ public class CandidatureService {
     private final DocumentCVRepository documentCVRepository;
     private final N8nWebhookService n8nWebhookService;
     private final RagScoringService ragScoringService;
+    private final HistoriqueRecrutementService historiqueService;
 
     public CandidatureService(CandidatureRepository candidatureRepository,
                               CandidatRepository candidatRepository,
@@ -40,7 +42,8 @@ public class CandidatureService {
                               AnalyseIARepository analyseIARepository,
                               DocumentCVRepository documentCVRepository,
                               N8nWebhookService n8nWebhookService,
-                              RagScoringService ragScoringService) {
+                              RagScoringService ragScoringService,
+                              HistoriqueRecrutementService historiqueService) {
         this.candidatureRepository = candidatureRepository;
         this.candidatRepository = candidatRepository;
         this.fichePosteRepository = fichePosteRepository;
@@ -48,6 +51,7 @@ public class CandidatureService {
         this.documentCVRepository = documentCVRepository;
         this.n8nWebhookService = n8nWebhookService;
         this.ragScoringService = ragScoringService;
+        this.historiqueService = historiqueService;
     }
 
     public List<CandidatureResponse> getAllCandidatures() {
@@ -96,6 +100,7 @@ public class CandidatureService {
         candidature.setStatut(StatutCandidature.EN_ATTENTE);
         candidature.setDatePostulation(java.time.LocalDate.now());
         candidature = candidatureRepository.save(candidature);
+        saveHistory(candidature, null, "EN_ATTENTE");
         n8nWebhookService.notifyCandidatureCreated(candidature);
         return toResponse(candidature);
     }
@@ -112,6 +117,10 @@ public class CandidatureService {
             candidature.setScoreCompatibilite(request.getScoreCompatibilite());
         }
         candidature = candidatureRepository.save(candidature);
+        String nouveauStatut = candidature.getStatut() != null ? candidature.getStatut().name() : null;
+        if (!Objects.equals(ancienStatut, nouveauStatut)) {
+            saveHistory(candidature, ancienStatut, nouveauStatut);
+        }
         n8nWebhookService.notifyCandidatureUpdated(candidature, ancienStatut);
         return toResponse(candidature);
     }
@@ -129,8 +138,10 @@ public class CandidatureService {
         Candidature candidature = candidatureRepository.findById(candidatureId)
                 .orElseThrow(() -> new ResourceNotFoundException("Candidature non trouvee avec l'ID : " + candidatureId));
 
+        String ancienStatut = candidature.getStatut() != null ? candidature.getStatut().name() : null;
         candidature.setStatut(StatutCandidature.EN_ANALYSE);
         candidatureRepository.save(candidature);
+        saveHistory(candidature, ancienStatut, "EN_ANALYSE");
 
         FichePoste poste = candidature.getFichePoste();
         if (poste == null) throw new BadRequestException("Aucune fiche de poste associee.");

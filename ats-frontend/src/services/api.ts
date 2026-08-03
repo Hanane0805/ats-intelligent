@@ -248,6 +248,11 @@ export const api = {
     });
   },
 
+  deleteCandidature: (id: number): Promise<void> =>
+    request<void>(`/api/candidatures/${id}`, {
+      method: 'DELETE',
+    }),
+
   analyzeCandidature: async (id: number): Promise<Candidature> => {
     return request<Candidature>(`/api/candidatures/${id}/analyze`, {
       method: 'POST',

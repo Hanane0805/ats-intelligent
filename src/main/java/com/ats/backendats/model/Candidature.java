@@ -40,4 +40,7 @@ public class Candidature {
 
     @OneToMany(mappedBy = "candidature", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<HistoriqueRecrutement> historiques;
+
+    @OneToMany(mappedBy = "candidature", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Entretien> entretiens;
 }

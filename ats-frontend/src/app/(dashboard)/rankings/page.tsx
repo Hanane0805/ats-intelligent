@@ -90,6 +90,16 @@ export default function RankingsPage() {
     }
   };
 
+  const handleDelete = async (id: number) => {
+    if (!confirm("Voulez-vous vraiment supprimer cette candidature ?")) return;
+    try {
+      await api.deleteCandidature(id);
+      setCandidatures(prev => prev.filter(c => c.id !== id));
+    } catch (e: any) {
+      alert(e.message || "Erreur lors de la suppression");
+    }
+  };
+
   // Unique job titles for filter
   const jobTitles = [...new Set(candidatures.map(c => c.fichePosteTitre).filter(Boolean))];
 
@@ -263,29 +273,38 @@ export default function RankingsPage() {
                           </div>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <button
-                            onClick={() => {
-                              if (c.analyseIA) {
-                                setSelectedCandidature(c);
-                              } else {
-                                handleAnalyze(c.id);
-                              }
-                            }}
-                            disabled={analyzingId === c.id}
-                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                              c.analyseIA 
-                              ? 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200' 
-                              : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200'
-                            } disabled:opacity-50`}
-                          >
-                            {analyzingId === c.id ? (
-                              <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Analyse...</>
-                            ) : c.analyseIA ? (
-                              <><Trophy className="w-3.5 h-3.5" /> Voir Rapport</>
-                            ) : (
-                              <><Wand2 className="w-3.5 h-3.5" /> Analyser IA</>
-                            )}
-                          </button>
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => {
+                                if (c.analyseIA) {
+                                  setSelectedCandidature(c);
+                                } else {
+                                  handleAnalyze(c.id);
+                                }
+                              }}
+                              disabled={analyzingId === c.id}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                c.analyseIA 
+                                ? 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200' 
+                                : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200'
+                              } disabled:opacity-50`}
+                            >
+                              {analyzingId === c.id ? (
+                                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Analyse...</>
+                              ) : c.analyseIA ? (
+                                <><Trophy className="w-3.5 h-3.5" /> Voir Rapport</>
+                              ) : (
+                                <><Wand2 className="w-3.5 h-3.5" /> Analyser IA</>
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleDelete(c.id)}
+                              className="p-1.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 border border-red-200 transition-colors"
+                              title="Supprimer la candidature"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );

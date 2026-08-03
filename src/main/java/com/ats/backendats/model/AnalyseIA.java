@@ -24,6 +24,7 @@ public class AnalyseIA {
     @Column(name = "synthese_faiblesses", columnDefinition = "TEXT")
     private String syntheseFaiblesses;
 
+    @Column(columnDefinition = "TEXT")
     private String recommandation;
 
     @Column(name = "date_analyse")

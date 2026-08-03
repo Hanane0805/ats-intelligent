@@ -1,67 +1,96 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
+import { Loader2, CheckCircle2, XCircle, LayoutGrid } from 'lucide-react';
+import { useAuth } from '../../../../context/AuthContext';
 
-export default function GoogleCallbackPage() {
-  const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
+type Status = 'processing' | 'success' | 'error';
+
+function GoogleCallbackContent() {
+  const searchParams = useSearchParams();
+  const { loginWithGoogleCallback } = useAuth();
+
+  const [status, setStatus] = useState<Status>('processing');
   const [message, setMessage] = useState('Connexion avec Google en cours...');
+  const hasRun = useRef(false);
 
   useEffect(() => {
-    const code = new URLSearchParams(window.location.search).get('code');
-    if (!code) {
+    if (hasRun.current) return;
+    hasRun.current = true;
+
+    const oauthError = searchParams.get('error');
+    const code = searchParams.get('code');
+
+    if (oauthError) {
       setStatus('error');
-      setMessage('Code d\'autorisation Google manquant.');
+      setMessage('La connexion avec Google a été refusée ou a échoué.');
+      setTimeout(() => { window.location.href = '/'; }, 2500);
       return;
     }
 
-    fetch(`/api/auth/oauth2/google/callback?code=${encodeURIComponent(code)}`)
-      .then(async res => {
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || 'Erreur de connexion Google');
-        // Store session
-        localStorage.setItem('ats_token', data.accessToken);
-        // Fetch user info from JWT
-        await fetch('/api/auth/session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: data.accessToken }),
-        });
+    if (!code) {
+      setStatus('error');
+      setMessage("Code d'autorisation Google manquant.");
+      setTimeout(() => { window.location.href = '/'; }, 2500);
+      return;
+    }
+
+    (async () => {
+      try {
+        await loginWithGoogleCallback(code);
         setStatus('success');
-        setMessage('Connecté ! Redirection...');
-        setTimeout(() => { window.location.href = '/dashboard'; }, 1000);
-      })
-      .catch(err => {
+        setMessage('Connexion réussie. Redirection...');
+        window.location.href = '/dashboard';
+      } catch (err: any) {
         setStatus('error');
-        setMessage(err.message || 'Erreur lors de la connexion Google.');
-      });
-  }, []);
+        setMessage(
+          err?.response?.data?.message ||
+          err?.message ||
+          "Impossible de finaliser la connexion avec Google."
+        );
+        setTimeout(() => { window.location.href = '/'; }, 3000);
+      }
+    })();
+  }, [searchParams, loginWithGoogleCallback]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="text-center space-y-4 p-8">
-        {status === 'loading' && (
-          <>
-            <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto" />
-            <p className="text-foreground font-medium">{message}</p>
-          </>
-        )}
-        {status === 'success' && (
-          <>
-            <CheckCircle className="w-12 h-12 text-emerald-500 mx-auto" />
-            <p className="text-foreground font-medium">{message}</p>
-          </>
-        )}
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background text-foreground p-6">
+      <div className="flex items-center space-x-3 mb-8">
+        <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-emerald-500/10 text-emerald-500 p-2 border border-emerald-500/20">
+          <LayoutGrid className="w-5 h-5" />
+        </div>
+        <h1 className="text-xl font-medium tracking-tight">ATS Intelligent</h1>
+      </div>
+
+      <div className="w-full max-w-sm bg-card border border-border rounded-2xl p-8 text-center space-y-4 shadow-sm">
+        {status === 'processing' && <Loader2 className="mx-auto h-10 w-10 text-primary animate-spin" />}
+        {status === 'success' && <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-500" />}
+        {status === 'error' && <XCircle className="mx-auto h-10 w-10 text-destructive" />}
+
+        <p className="text-sm text-muted-foreground">{message}</p>
+
         {status === 'error' && (
-          <>
-            <AlertCircle className="w-12 h-12 text-destructive mx-auto" />
-            <p className="text-destructive font-medium">{message}</p>
-            <a href="/" className="text-sm text-primary hover:underline block mt-2">
-              Retourner à la connexion
-            </a>
-          </>
+          <Link href="/" className="inline-block text-sm font-medium text-primary hover:underline">
+            Retour à la connexion
+          </Link>
         )}
       </div>
     </div>
+  );
+}
+
+export default function GoogleCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <Loader2 className="h-10 w-10 text-primary animate-spin" />
+        </div>
+      }
+    >
+      <GoogleCallbackContent />
+    </Suspense>
   );
 }

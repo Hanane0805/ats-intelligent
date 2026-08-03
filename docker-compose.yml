@@ -24,9 +24,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ats_db
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
-      SPRING_AI_OLLAMA_BASE_URL: http://ollama:11434
-      SPRING_AI_OLLAMA_CHAT_OPTIONS_MODEL: llama3.2:1b
-      SPRING_AI_OLLAMA_EMBEDDING_OPTIONS_MODEL: nomic-embed-text
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       N8N_ENABLED: ${N8N_ENABLED:-true}
       N8N_API_KEY: ${N8N_API_KEY:-changez-moi-en-production}
       N8N_WEBHOOK_CANDIDATURE_CREATED: http://n8n:5678/webhook/candidature-created
@@ -59,19 +57,9 @@ services:
       - n8n_data:/home/node/.n8n
       - ./n8n/workflows:/home/node/workflows:ro
 
-  # Ollama - Serveur IA Local
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ats-ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    # La commande de démarrage n'est pas nécessaire, mais il faudra télécharger le modèle manuellement
-    # via "docker exec -it ats-ollama ollama run llama3"
+
 
 
 volumes:
   pgdata:
   n8n_data:
-  ollama_data:

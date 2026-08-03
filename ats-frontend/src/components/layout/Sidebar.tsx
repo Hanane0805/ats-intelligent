@@ -55,11 +55,23 @@ export default function Sidebar() {
   return (
     <aside className="w-64 bg-[#1e3a8a] text-blue-100 flex flex-col min-h-screen flex-shrink-0 shadow-xl">
       {/* Logo & Branding */}
-      <div className="p-6 pb-4">
-        <h1 className="text-white font-bold text-xl flex items-center gap-2">
-          <Bot className="w-8 h-8 text-emerald-400" /> ATS Intelligent
-        </h1>
-        <p className="text-blue-300 text-[10px] uppercase tracking-wider ml-10">AI Recruitment Platform</p>
+      <div className="p-6 pb-4 flex flex-col items-center">
+        {/* Norsys Logo */}
+        <div className="w-full flex justify-center py-2 bg-white/90 rounded-lg shadow-sm mb-4">
+          <img 
+            src="/norsys-logo.png" 
+            alt="Norsys" 
+            className="h-10 object-contain"
+          />
+        </div>
+        
+        {/* ATS App Branding */}
+        <div className="w-full">
+          <h1 className="text-white font-bold text-xl flex items-center gap-2">
+            <Bot className="w-8 h-8 text-emerald-400" /> ATS Intelligent
+          </h1>
+          <p className="text-blue-300 text-[10px] uppercase tracking-wider ml-10">AI Recruitment Platform</p>
+        </div>
       </div>
 
       {/* Nav */}

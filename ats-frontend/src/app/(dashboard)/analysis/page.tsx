@@ -236,11 +236,11 @@ export default function AnalysisPage() {
               <div className="mb-6 bg-emerald-50 border border-emerald-100 rounded-xl p-4 flex items-start gap-3">
                 <CheckCircle2 className="w-5 h-5 text-emerald-600 mt-0.5 flex-shrink-0" />
                 <div>
-                  <h4 className="text-emerald-900 font-bold text-sm">Extraction RAG (Ollama Llama 3)</h4>
+                  <h4 className="text-emerald-900 font-bold text-sm">Extraction RAG (Google Gemini)</h4>
                   <p className="text-emerald-700 text-xs mt-1 leading-relaxed">
                     Ce CV a été découpé et indexé mathématiquement dans PostgreSQL (pgvector).
                     <strong> {selectedFile.nombreChunks || 0} morceaux (chunks)</strong> ont été générés.
-                    Lors de l'analyse, seuls les morceaux les plus pertinents ont été envoyés à l'IA locale pour économiser la mémoire et améliorer la précision !
+                    Lors de l'analyse, seuls les morceaux les plus pertinents ont été envoyés à l'IA Google Gemini pour une précision maximale !
                   </p>
                 </div>
               </div>
