@@ -9,8 +9,6 @@ import com.ats.backendats.model.DocumentCV;
 import com.ats.backendats.repository.CandidatRepository;
 import com.ats.backendats.repository.CVChunkRepository;
 import com.ats.backendats.repository.DocumentCVRepository;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.tika.Tika;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
@@ -29,31 +27,21 @@ public class DocumentCVService {
     private final DocumentCVRepository documentCVRepository;
     private final CandidatRepository candidatRepository;
     private final CVChunkRepository cvChunkRepository;
-    private final CVSectionChunker cvSectionChunker;
-    private final EmbeddingService embeddingService;
     private final RagSourcingService ragSourcingService;
     private final Tika tika;
 
-    @Value("${rag.gemini.api-key:}")
-    private String geminiApiKey;
-
-    @Value("${rag.gemini.model:gemini-1.5-flash}")
-    private String geminiModel;
+    @Value("${rag.python.service.url:http://localhost:5000}")
+    private String pythonServiceUrl;
 
     private final RestTemplate restTemplate = new RestTemplate();
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public DocumentCVService(DocumentCVRepository documentCVRepository,
                              CandidatRepository candidatRepository,
                              CVChunkRepository cvChunkRepository,
-                             CVSectionChunker cvSectionChunker,
-                             EmbeddingService embeddingService,
                              RagSourcingService ragSourcingService) {
         this.documentCVRepository = documentCVRepository;
         this.candidatRepository = candidatRepository;
         this.cvChunkRepository = cvChunkRepository;
-        this.cvSectionChunker = cvSectionChunker;
-        this.embeddingService = embeddingService;
         this.ragSourcingService = ragSourcingService;
         this.tika = new Tika();
     }
@@ -99,7 +87,7 @@ public class DocumentCVService {
         } catch (Exception e) {
             throw new BadRequestException("Erreur lors de la lecture du fichier : " + e.getMessage());
         }
-        CandidatExtractionResponse extraction = tryExtractWithGemini(texteBrut, file.getOriginalFilename());
+        CandidatExtractionResponse extraction = tryExtractWithPython(texteBrut, file.getOriginalFilename());
         return saveCandidatAndDocument(extraction, texteBrut, file.getOriginalFilename());
     }
 
@@ -134,120 +122,47 @@ public class DocumentCVService {
         document = documentCVRepository.save(document);
 
         try {
-            List<CVSectionChunker.CVChunk> cvChunks = cvSectionChunker.chunk(texteBrut);
-            int globalIndex = 0;
-            for (CVSectionChunker.CVChunk cvChunk : cvChunks) {
-                float[] embedding = embeddingService.embed(cvChunk.toEmbeddingText());
-                com.ats.backendats.model.CVChunk relationalChunk = new com.ats.backendats.model.CVChunk();
-                relationalChunk.setContenuTexte(cvChunk.content());
-                relationalChunk.setVecteurEmbedding(embedding);
-                relationalChunk.setIndexOrdre(globalIndex);
-                relationalChunk.setDocumentCV(document);
-                cvChunkRepository.save(relationalChunk);
-                globalIndex++;
-            }
-            System.out.println("[RAG-Document] " + cvChunks.size() + " chunks CV-aware crees pour candidat " + candidat.getId());
+            ragSourcingService.embedCandidateCV(candidat.getId(), document.getTexteBrut());
+            System.out.println("[RAG-Document] Embedding Python effectue pour candidat " + candidat.getId());
         } catch (Exception e) {
-            System.err.println("[RAG-Document] Erreur chunks: " + e.getMessage());
-        }
-
-        try {
-            ragSourcingService.embedCandidateCV(candidat, document);
-        } catch (Exception e) {
-            System.err.println("[RAG-Document] Erreur PgVector: " + e.getMessage());
+            System.err.println("[RAG-Document] Erreur embedding Python: " + e.getMessage());
         }
 
         return toResponse(document);
     }
 
-    private CandidatExtractionResponse tryExtractWithGemini(String texteBrut, String filename) {
+    private CandidatExtractionResponse tryExtractWithPython(String texteBrut, String filename) {
         try {
             String limitedText = texteBrut.length() > 3000 ? texteBrut.substring(0, 3000) : texteBrut;
 
-            String prompt = "Tu es un assistant de recrutement. Extrait les informations personnelles du candidat."
-                    + " Si une information n'est pas trouvee, laisse le champ vide."
-                    + "\n\nCV:\n" + limitedText
-                    + "\n\nReponds UNIQUEMENT en JSON valide :"
-                    + "\n{\"nom\": \"<nom>\", \"prenom\": \"<prenom>\", \"email\": \"<email>\", \"telephone\": \"<telephone>\", \"adresse\": \"<adresse>\"}";
+            Map<String, String> requestBody = new LinkedHashMap<>();
+            requestBody.put("text", limitedText);
 
-            String response = callGemini(prompt);
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Map<String, String>> request = new HttpEntity<>(requestBody, headers);
 
-            CandidatExtractionResponse result = new CandidatExtractionResponse();
-            result.setNom(extractJsonStringField(response, "nom"));
-            result.setPrenom(extractJsonStringField(response, "prenom"));
-            result.setEmail(extractJsonStringField(response, "email"));
+            ResponseEntity<Map> response = restTemplate.exchange(
+                    pythonServiceUrl + "/api/rag/extract",
+                    HttpMethod.POST, request, Map.class
+            );
 
+            Map<String, Object> data = response.getBody();
+            if (data != null) {
+                CandidatExtractionResponse result = new CandidatExtractionResponse();
+                result.setNom(data.get("nom") != null ? data.get("nom").toString() : null);
+                result.setPrenom(data.get("prenom") != null ? data.get("prenom").toString() : null);
+                result.setEmail(data.get("email") != null ? data.get("email").toString() : null);
 
-
-            if (result.getNom() != null || result.getPrenom() != null ||
-                    (result.getEmail() != null && !result.getEmail().isEmpty())) {
-                return result;
+                if (result.getNom() != null || result.getPrenom() != null ||
+                        (result.getEmail() != null && !result.getEmail().isEmpty())) {
+                    return result;
+                }
             }
         } catch (Exception e) {
-            System.err.println("[CV Analysis] Gemini indisponible, fallback regex: " + e.getMessage());
+            System.err.println("[CV Analysis] Python service indisponible, fallback regex: " + e.getMessage());
         }
         return extractWithSimpleSearch(texteBrut, filename);
-    }
-
-    private String callGemini(String prompt) throws Exception {
-        String url = "https://generativelanguage.googleapis.com/v1beta/models/"
-                + geminiModel + ":generateContent?key=" + geminiApiKey;
-
-        Map<String, Object> requestBody = new LinkedHashMap<>();
-        requestBody.put("contents", List.of(
-                Map.of("parts", List.of(Map.of("text", prompt)))
-        ));
-        requestBody.put("generationConfig", Map.of(
-                "temperature", 0.1,
-                "maxOutputTokens", 512
-        ));
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
-
-        ResponseEntity<String> response = restTemplate.exchange(
-                url, HttpMethod.POST, request, String.class
-        );
-
-        JsonNode root = objectMapper.readTree(response.getBody());
-        String text = root.path("candidates").get(0)
-                .path("content").path("parts").get(0)
-                .path("text").asText();
-
-        int backtickIdx = text.indexOf("```");
-        if (backtickIdx >= 0) {
-            int contentStart = text.indexOf("\n", backtickIdx);
-            if (contentStart >= 0) {
-                int contentEnd = text.indexOf("```", contentStart);
-                if (contentEnd < 0) contentEnd = text.length();
-                text = text.substring(contentStart, contentEnd).trim();
-            }
-        }
-        return text;
-    }
-
-    private String extractJsonStringField(String json, String fieldName) {
-        if (json == null) return null;
-        String searchKey = "\"" + fieldName + "\":";
-        int idx = json.indexOf(searchKey);
-        if (idx < 0) return null;
-        int startQuote = json.indexOf("\"", idx + searchKey.length());
-        if (startQuote < 0) return null;
-        int end = startQuote + 1;
-        while (end < json.length()) {
-            char c = json.charAt(end);
-            if (c == '\\' && end + 1 < json.length()) {
-                end += 2;
-                continue;
-            }
-            if (c == '"') break;
-            end++;
-        }
-        String value = json.substring(startQuote + 1, end);
-        value = value.replace("\\n", " ").replace("\\t", " ");
-        if (value.trim().isEmpty()) return null;
-        return value;
     }
 
     private CandidatExtractionResponse extractWithSimpleSearch(String texteBrut, String filename) {

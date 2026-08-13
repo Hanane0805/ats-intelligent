@@ -22,4 +22,9 @@ public class Candidat {
 
     @Column(nullable = false, unique = true)
     private String email;
+
+    @Column(nullable = false)
+    private String motDePasse;
+
+    private Boolean estActif = true;
 }

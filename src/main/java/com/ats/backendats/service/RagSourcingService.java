@@ -1,96 +1,79 @@
 package com.ats.backendats.service;
 
-import com.ats.backendats.model.Candidat;
-import com.ats.backendats.model.DocumentCV;
-import com.ats.backendats.repository.CandidatRepository;
-import com.ats.backendats.repository.DocumentCVRepository;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.stream.Collectors;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class RagSourcingService {
 
-    private final VectorSearchService vectorSearchService;
-    private final EmbeddingService embeddingService;
-    private final CVSectionChunker cvSectionChunker;
-    private final CandidatRepository candidatRepository;
-    private final DocumentCVRepository documentCVRepository;
+    @Value("${rag.python.service.url:http://localhost:5000}")
+    private String pythonServiceUrl;
 
-    public void embedCandidateCV(Candidat candidat, DocumentCV cv) {
-        log.info("Embedding CV for candidate ID: {}", candidat.getId());
+    private final RestTemplate restTemplate = new RestTemplate();
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public void embedCandidateCV(Long candidatId, String cvText) {
+        log.info("Embedding CV pour candidat ID: {} (delegue au Python)", candidatId);
         try {
-            String text = cv.getTexteBrut();
-            if (text == null || text.isBlank()) {
-                log.warn("CV vide pour candidat {}", candidat.getId());
-                return;
-            }
+            String url = pythonServiceUrl + "/api/rag/embed";
 
-            List<CVSectionChunker.CVChunk> chunks = cvSectionChunker.chunk(text);
-            List<String> chunkTexts = chunks.stream()
-                    .map(CVSectionChunker.CVChunk::toEmbeddingText)
-                    .collect(Collectors.toList());
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("candidat_id", candidatId);
+            body.put("cv_text", cvText);
 
-            float[][] embeddings = embeddingService.embedBatch(chunkTexts);
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
 
-            vectorSearchService.storeEmbeddings(candidat.getId(), chunkTexts, embeddings);
-
-            log.info("CV embedde avec succes pour candidat ID: {} ({} sections)", candidat.getId(), chunks.size());
+            restTemplate.exchange(url, HttpMethod.POST, request, String.class);
+            log.info("CV embedde avec succes pour candidat ID: {}", candidatId);
         } catch (Exception e) {
-            log.error("Erreur embedding CV candidat {}", candidat.getId(), e);
+            log.error("Erreur embedding CV candidat {}: {}", candidatId, e.getMessage());
         }
     }
 
-    public List<Candidat> semanticSearch(String query, int topK) {
-        log.info("Recherche semantique: '{}', topK: {}", query, topK);
-
+    public List<Map<String, Object>> semanticSearch(String query, int topK) {
+        log.info("Recherche semantique: '{}' | topK: {}", query, topK);
         try {
-            float[] queryEmbedding = embeddingService.embed(query);
+            String url = pythonServiceUrl + "/api/rag/search";
 
-            List<VectorSearchService.GlobalRetrievalResult> results =
-                    vectorSearchService.searchGlobal(queryEmbedding, topK);
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("query", query);
+            body.put("top_k", topK);
 
-            List<Long> candidatIds = results.stream()
-                    .map(VectorSearchService.GlobalRetrievalResult::candidatId)
-                    .filter(id -> id != null)
-                    .distinct()
-                    .collect(Collectors.toList());
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
 
-            log.info("{} candidats trouves pour la recherche", candidatIds.size());
+            ResponseEntity<String> response = restTemplate.exchange(
+                    url, HttpMethod.POST, request, String.class);
 
-            return candidatIds.stream()
-                    .map(candidatRepository::findById)
-                    .filter(Optional::isPresent)
-                    .map(Optional::get)
-                    .collect(Collectors.toList());
+            JsonNode root = objectMapper.readTree(response.getBody());
+            List<Map<String, Object>> results = new ArrayList<>();
+            if (root.isArray()) {
+                for (JsonNode item : root) {
+                    Map<String, Object> r = new LinkedHashMap<>();
+                    r.put("candidatId", item.path("candidat_id").asLong());
+                    r.put("score", item.path("score").asDouble());
+                    results.add(r);
+                }
+            }
+            log.info("{} candidats trouves", results.size());
+            return results;
 
         } catch (Exception e) {
             log.error("Erreur recherche semantique: {}", e.getMessage());
             return List.of();
         }
-    }
-
-    public int embedAllExistingCVs() {
-        log.info("Embedding en lot de tous les CVs...");
-        List<Candidat> candidats = candidatRepository.findAll();
-        int count = 0;
-
-        for (Candidat c : candidats) {
-            List<DocumentCV> cvs = documentCVRepository.findByCandidatId(c.getId());
-            if (!cvs.isEmpty() && cvs.get(0).getTexteBrut() != null) {
-                embedCandidateCV(c, cvs.get(0));
-                count++;
-            }
-        }
-
-        log.info("{} CVs embeddes avec succes", count);
-        return count;
     }
 }

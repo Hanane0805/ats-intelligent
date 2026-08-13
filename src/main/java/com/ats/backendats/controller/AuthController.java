@@ -2,6 +2,7 @@ package com.ats.backendats.controller;
 
 import com.ats.backendats.dto.request.LoginRequest;
 import com.ats.backendats.dto.request.RegisterRecruteurRequest;
+import com.ats.backendats.dto.request.RegisterCandidatRequest;
 import com.ats.backendats.dto.response.AuthResponse;
 import com.ats.backendats.service.AuthService;
 import com.ats.backendats.service.TwoFactorService;
@@ -32,6 +33,13 @@ public class AuthController {
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRecruteurRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(authService.register(request));
+    }
+
+    @PostMapping("/register/candidat")
+    public ResponseEntity<AuthResponse> registerCandidat(
+            @Valid @RequestBody RegisterCandidatRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(authService.registerCandidat(request));
     }
 
     @PostMapping("/2fa/verify")

@@ -1,6 +1,5 @@
 package com.ats.backendats.controller;
 
-import com.ats.backendats.model.Candidat;
 import com.ats.backendats.service.RagSourcingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -17,19 +16,10 @@ public class RagSourcingController {
     private final RagSourcingService ragSourcingService;
 
     @GetMapping("/search")
-    public ResponseEntity<List<Candidat>> semanticSearch(
+    public ResponseEntity<List<Map<String, Object>>> semanticSearch(
             @RequestParam String query,
             @RequestParam(defaultValue = "10") int topK) {
-        List<Candidat> results = ragSourcingService.semanticSearch(query, topK);
+        List<Map<String, Object>> results = ragSourcingService.semanticSearch(query, topK);
         return ResponseEntity.ok(results);
-    }
-
-    @PostMapping("/embed-all")
-    public ResponseEntity<Map<String, Object>> embedAllExistingCVs() {
-        int count = ragSourcingService.embedAllExistingCVs();
-        return ResponseEntity.ok(Map.of(
-                "message", "CVs embeddes avec succes (RAG pur)",
-                "count", count
-        ));
     }
 }

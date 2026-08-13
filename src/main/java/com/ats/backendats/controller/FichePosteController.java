@@ -57,4 +57,11 @@ public class FichePosteController {
         fichePosteService.deleteFiche(id);
         return ResponseEntity.noContent().build();
     }
+
+    // ===== ENDPOINTS PUBLICS POUR LES CANDIDATS =====
+
+    @GetMapping("/public/jobs")
+    public ResponseEntity<List<FichePosteResponse>> getPublicJobs() {
+        return ResponseEntity.ok(fichePosteService.getFichesByStatut("OUVERT"));
+    }
 }
