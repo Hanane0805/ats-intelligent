@@ -40,20 +40,20 @@ export default function SourcingPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 max-w-5xl mx-auto w-full pb-10">
-      <div className="flex justify-between items-center mt-2">
+    <div className="flex flex-col gap-6 max-w-5xl mx-auto w-full p-4 sm:p-6 lg:p-8">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mt-2">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <BrainCircuit className="w-6 h-6 text-indigo-600" /> Sourcing Intelligent (RAG)
+            <BrainCircuit className="w-6 h-6 text-indigo-600 flex-shrink-0" /> Sourcing Intelligent (RAG)
           </h1>
           <p className="text-sm text-gray-500 mt-1">Recherche sémantique de candidats dans tout le vivier de CVs.</p>
         </div>
-        <button onClick={handleEmbedAll} className="px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors">
+        <button onClick={handleEmbedAll} className="px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors self-start sm:self-auto flex-shrink-0">
           Indexation globale (Sync)
         </button>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 lg:p-8">
         {/* Search Bar */}
         <form onSubmit={handleSearch} className="relative max-w-3xl mx-auto">
           <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
@@ -64,15 +64,15 @@ export default function SourcingPage() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Ex: 'Développeur Java avec expérience bancaire et React' ou 'Expert comptable anglais courant'"
-            className="w-full pl-12 pr-32 py-4 bg-gray-50 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all shadow-inner"
+            className="w-full pl-12 pr-24 sm:pr-32 py-4 bg-gray-50 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all shadow-inner"
           />
           <button
             type="submit"
             disabled={loading || !query.trim()}
-            className="absolute right-2 top-2 bottom-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-6 rounded-lg text-sm font-bold flex items-center gap-2 transition-all shadow-md"
+            className="absolute right-2 top-2 bottom-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-3 sm:px-6 rounded-lg text-sm font-bold flex items-center gap-2 transition-all shadow-md"
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-            Chercher
+            <span className="hidden sm:inline">Chercher</span>
           </button>
         </form>
       </div>

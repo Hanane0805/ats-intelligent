@@ -115,7 +115,7 @@ export default function CandidaturesKanbanPage() {
   }
 
   return (
-    <div className="h-full flex flex-col p-6 space-y-6 overflow-hidden bg-gray-50/30">
+    <div className="h-full flex flex-col p-4 sm:p-6 space-y-6 overflow-hidden bg-gray-50/30">
       
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 flex-shrink-0">
@@ -129,14 +129,14 @@ export default function CandidaturesKanbanPage() {
           </p>
         </div>
 
-        <div className="relative">
+        <div className="relative w-full sm:w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
             placeholder="Rechercher un candidat..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm w-64 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+            className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
           />
         </div>
       </div>
@@ -215,7 +215,7 @@ export default function CandidaturesKanbanPage() {
                         {new Date(c.datePostulation).toLocaleDateString()}
                       </div>
 
-                      <div className="pt-3 border-t border-gray-100 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="pt-3 border-t border-gray-100 flex justify-between items-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                         <button className="text-xs font-medium text-gray-500 hover:text-primary flex items-center gap-1">
                           <FileText className="w-3 h-3" /> CV
                         </button>

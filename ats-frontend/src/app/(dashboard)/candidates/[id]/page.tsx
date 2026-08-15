@@ -207,7 +207,7 @@ export default function CandidatDetailPage() {
 
   return (
     <>
-      <div className="max-w-5xl mx-auto w-full space-y-6 pb-10">
+      <div className="max-w-5xl mx-auto w-full space-y-6 p-4 sm:p-6 lg:p-8 pb-10">
 
       {/* Back */}
       <button
@@ -458,19 +458,19 @@ export default function CandidatDetailPage() {
                 : ent.statutEntretien === 'ANNULE' ? 'bg-rose-100 text-rose-700'
                 : 'bg-gray-100 text-gray-600';
               return (
-                <div key={ent.id} className="flex items-center justify-between p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
-                  <div className="flex items-center gap-3">
+                <div key={ent.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
+                  <div className="flex items-center gap-3 min-w-0">
                     <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center flex-shrink-0">
                       {typeIcon}
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="font-semibold text-gray-900 text-sm">
                         {dt.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
                         {' à '}
                         {dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                         <span className="text-gray-400 font-normal ml-2">· {ent.dureeMinutes} min</span>
                       </p>
-                      <div className="flex items-center gap-2 mt-0.5">
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                         <span className="text-xs text-gray-500">{ent.typeEntretien}</span>
                         {ent.lienVisio && <a href={ent.lienVisio} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline truncate max-w-[200px]">{ent.lienVisio}</a>}
                         {ent.lieu && <span className="text-xs text-gray-500">{ent.lieu}</span>}
@@ -478,7 +478,7 @@ export default function CandidatDetailPage() {
                       {ent.notes && <p className="text-xs text-gray-400 mt-0.5 italic">{ent.notes}</p>}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                  <div className="flex items-center gap-2 flex-shrink-0 sm:ml-3">
                     <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${statutColor}`}>{ent.statutEntretien}</span>
                     <button onClick={() => handleDeleteEntretien(ent.id)} className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors">
                       <Trash2 className="w-4 h-4" />

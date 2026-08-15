@@ -70,15 +70,15 @@ export default function JobPositionsPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 max-w-[1200px] mx-auto w-full pb-10">
-      <div className="flex justify-between items-center mt-2">
+    <div className="flex flex-col gap-6 max-w-[1200px] mx-auto w-full p-4 sm:p-6 lg:p-8">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mt-2">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Job Positions</h1>
           <p className="text-sm text-gray-500 mt-1">{jobs.length} position{jobs.length !== 1 ? 's' : ''} total</p>
         </div>
         <button
           onClick={() => { setShowModal(true); setCreateError(''); }}
-          className="bg-[#1e3a8a] hover:bg-blue-800 text-white px-5 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm"
+          className="bg-[#1e3a8a] hover:bg-blue-800 text-white px-5 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" /> Create Position
         </button>

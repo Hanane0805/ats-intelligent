@@ -39,9 +39,9 @@ export default function CreateJobPage() {
   };
 
   return (
-    <div className="p-8 bg-slate-50 min-h-screen">
+    <div className="p-4 sm:p-6 lg:p-8 bg-slate-50 min-h-screen">
       {/* Header */}
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Create Job Position</h1>
           <p className="text-slate-500 text-sm">Define a new position and required qualifications</p>
@@ -74,7 +74,7 @@ export default function CreateJobPage() {
                 <label className="block text-sm font-medium text-slate-700 mb-1">Position Title</label>
                 <input name="title" onChange={handleChange} placeholder="e.g. Senior Frontend Developer" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Department</label>
                   <select name="department" onChange={handleChange} className="w-full p-2.5 border border-slate-300 rounded-lg bg-white">
@@ -102,7 +102,7 @@ export default function CreateJobPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Salary Range (optional)</label>
-                <div className="flex gap-4">
+                <div className="flex flex-col sm:flex-row gap-4">
                   <input name="salaryMin" onChange={handleChange} placeholder="$80,000" className="w-full p-2.5 border border-slate-300 rounded-lg" />
                   <input name="salaryMax" onChange={handleChange} placeholder="$120,000" className="w-full p-2.5 border border-slate-300 rounded-lg" />
                 </div>

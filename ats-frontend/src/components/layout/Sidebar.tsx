@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { 
   LayoutDashboard, Briefcase, Users, FileText, BarChart2, 
   History, Settings, Shield, UserCog, ClipboardList, LogOut, Bot,
-  Activity, KanbanSquare, Moon, Sun, BrainCircuit
+  Activity, KanbanSquare, Moon, Sun, BrainCircuit, X
 } from 'lucide-react';
 import { auth, User } from '../../services/api';
 
@@ -31,7 +31,12 @@ const adminLinks = [
   { name: 'Audit Logs', href: '/logs', icon: FileText },
 ];
 
-export default function Sidebar() {
+interface SidebarProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
   const [darkMode, setDarkMode] = useState(false);
@@ -45,6 +50,12 @@ export default function Sidebar() {
     }
   }, []);
 
+  // Close the mobile drawer automatically whenever the route changes
+  useEffect(() => {
+    onClose?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
   const toggleDark = () => {
     const next = !darkMode;
     setDarkMode(next);
@@ -53,8 +64,32 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="w-64 bg-[#1e3a8a] text-blue-100 flex flex-col min-h-screen flex-shrink-0 shadow-xl">
-      {/* Logo & Branding */}
+    <>
+      {/* Mobile backdrop overlay */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={`w-64 bg-[#1e3a8a] text-blue-100 flex flex-col min-h-screen h-screen flex-shrink-0 shadow-xl
+        fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out
+        lg:static lg:h-screen lg:translate-x-0 lg:z-auto
+        ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
+      >
+        {/* Mobile close button */}
+        <button
+          onClick={onClose}
+          aria-label="Close menu"
+          className="lg:hidden absolute top-3 right-3 p-1.5 rounded-lg text-blue-200 hover:text-white hover:bg-[#2d46a8]/50 transition-colors"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        {/* Logo & Branding */}
       <div className="p-6 pb-4 flex flex-col items-center">
         {/* Norsys Logo */}
         <div className="w-full flex justify-center py-2 bg-white/90 rounded-lg shadow-sm mb-4">
@@ -68,7 +103,7 @@ export default function Sidebar() {
         {/* ATS App Branding */}
         <div className="w-full">
           <h1 className="text-white font-bold text-xl flex items-center gap-2">
-            <Bot className="w-8 h-8 text-emerald-400" /> ATS Intelligent
+            <Bot className="w-8 h-8 text-emerald-400 flex-shrink-0" /> ATS Intelligent
           </h1>
           <p className="text-blue-300 text-[10px] uppercase tracking-wider ml-10">AI Recruitment Platform</p>
         </div>
@@ -139,6 +174,7 @@ export default function Sidebar() {
           <LogOut className="w-4 h-4" /> Logout
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

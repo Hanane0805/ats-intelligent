@@ -41,9 +41,9 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
             <Bell className="w-6 h-6 text-[#1e3a8a]" /> Notifications Center
@@ -53,7 +53,7 @@ export default function NotificationsPage() {
         {notifications.some(n => !n.read) && (
           <button 
             onClick={markAllAsRead}
-            className="text-sm font-medium text-[#1e3a8a] hover:underline"
+            className="text-sm font-medium text-[#1e3a8a] hover:underline self-start sm:self-auto flex-shrink-0"
           >
             Mark all as read
           </button>

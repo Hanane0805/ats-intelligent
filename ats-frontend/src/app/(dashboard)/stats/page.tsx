@@ -90,15 +90,15 @@ export default function StatisticsPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-6 max-w-[1200px] mx-auto w-full pb-10">
-      <div className="flex justify-between items-center mt-2">
+    <div className="flex flex-col gap-6 max-w-[1200px] mx-auto w-full p-4 sm:p-6 lg:p-8">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mt-2">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Statistics & Analytics</h1>
           <p className="text-sm text-gray-500 mt-1">Données en temps réel de votre pipeline de recrutement</p>
         </div>
         <button
           onClick={exportStatsCSV}
-          className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm"
+          className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm self-start sm:self-auto"
         >
           <Download className="w-4 h-4" /> Export CSV
         </button>
@@ -181,7 +181,7 @@ export default function StatisticsPage() {
           {/* Accepted vs Rejected */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
             <h3 className="text-base font-bold text-gray-900 mb-4">Acceptés vs Rejetés</h3>
-            <div className="flex items-center gap-6">
+            <div className="flex flex-col sm:flex-row items-center gap-6">
               <div className="flex-1 space-y-3">
                 <div>
                   <div className="flex justify-between text-sm mb-1">

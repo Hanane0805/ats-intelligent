@@ -71,7 +71,7 @@ export default function UserManagementPage() {
   });
 
   return (
-    <div className="flex flex-col gap-6 max-w-[1200px] mx-auto w-full pb-10 relative">
+    <div className="flex flex-col gap-6 max-w-[1200px] mx-auto w-full p-4 sm:p-6 lg:p-8 relative">
       {actionSuccess && (
         <div className="absolute top-0 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 text-sm font-medium shadow-lg animate-in slide-in-from-top-4">
           <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
@@ -79,14 +79,14 @@ export default function UserManagementPage() {
         </div>
       )}
 
-      <div className="flex justify-between items-center mt-2">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mt-2">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
           <p className="text-sm text-gray-500 mt-1">Manage system users and permissions</p>
         </div>
         <button 
           onClick={() => setShowModal(true)}
-          className="bg-[#1e3a8a] hover:bg-blue-800 text-white px-5 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm"
+          className="bg-[#1e3a8a] hover:bg-blue-800 text-white px-5 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" /> Create User
         </button>
@@ -213,7 +213,7 @@ export default function UserManagementPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-bold text-gray-700 mb-1 block">First Name</label>
                   <input

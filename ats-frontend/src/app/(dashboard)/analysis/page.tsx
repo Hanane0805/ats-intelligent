@@ -90,19 +90,19 @@ export default function AnalysisPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 max-w-[900px] mx-auto w-full pb-10">
-      <div className="flex justify-between items-center mt-2">
+    <div className="flex flex-col gap-6 max-w-[900px] mx-auto w-full p-4 sm:p-6 lg:p-8">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mt-2">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Bulk CV Upload</h1>
           <p className="text-sm text-gray-500 mt-1">Upload multiple CVs and analyze them with AI</p>
         </div>
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-50 text-emerald-600 border border-emerald-200">
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-50 text-emerald-600 border border-emerald-200 self-start sm:self-auto">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> AI Extraction Ready
         </div>
       </div>
 
       {/* Upload Dropzone */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 lg:p-8">
         <input 
           type="file" 
           multiple 
@@ -162,7 +162,7 @@ export default function AnalysisPage() {
                 
                 {/* File Info & Progress */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-center mb-1.5">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1.5 mb-1.5">
                     <p className="text-sm font-bold text-gray-900 truncate pr-4">
                       {file.name} 
                       {file.candidateName && <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded bg-gray-100 text-gray-600">→ {file.candidateName}</span>}
