@@ -6,9 +6,20 @@ import Link from 'next/link';
 import { api } from '../../services/api';
 import { isPasswordValid } from '../../lib/passwordValidation';
 import PasswordStrengthChecklist from '../../components/ui/PasswordStrengthChecklist';
+import { LanguageProvider, useLanguage } from '../../contexts/LanguageContext';
 
 export default function SignupPage() {
+  return (
+    <LanguageProvider>
+      <SignupForm />
+    </LanguageProvider>
+  );
+}
+
+function SignupForm() {
+  const { t } = useLanguage();
   const [formData, setFormData] = useState({ nom: '', prenom: '', email: '', password: '', departement: 'RH' });
+  const [roleType, setRoleType] = useState<'CANDIDAT' | 'RECRUTEUR'>('CANDIDAT');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [passwordTouched, setPasswordTouched] = useState(false);
@@ -30,14 +41,24 @@ export default function SignupPage() {
     setError('');
 
     try {
-      await api.register({
-        nom: formData.nom,
-        prenom: formData.prenom,
-        email: formData.email,
-        password: formData.password,
-        departement: formData.departement,
-      });
-      window.location.href = '/dashboard';
+      if (roleType === 'CANDIDAT') {
+        await api.registerCandidat({
+          nom: formData.nom,
+          prenom: formData.prenom,
+          email: formData.email,
+          password: formData.password,
+        });
+        window.location.href = '/my-applications';
+      } else {
+        await api.register({
+          nom: formData.nom,
+          prenom: formData.prenom,
+          email: formData.email,
+          password: formData.password,
+          departement: formData.departement,
+        });
+        window.location.href = '/dashboard';
+      }
     } catch (err: any) {
       setError(err.message || "Erreur lors de la création du compte.");
     } finally {
@@ -110,6 +131,23 @@ export default function SignupPage() {
             </div>
           )}
 
+          <div className="flex bg-muted p-1 rounded-lg mb-6">
+            <button
+              type="button"
+              onClick={() => setRoleType('CANDIDAT')}
+              className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${roleType === 'CANDIDAT' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              {t('signup.asCandidate')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setRoleType('RECRUTEUR')}
+              className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${roleType === 'RECRUTEUR' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              {t('signup.asRecruiter')}
+            </button>
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* First + Last Name Row */}
             <div className="grid grid-cols-2 gap-3">
@@ -153,18 +191,21 @@ export default function SignupPage() {
               />
             </div>
 
-            {/* Department Field */}
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                <Building2 className="h-4 w-4 text-muted-foreground" />
+            {/* Department Field - Only for recruiters */}
+            {roleType === 'RECRUTEUR' && (
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                  <Building2 className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <input
+                  type="text"
+                  required
+                  placeholder="Département (ex: RH)"
+                  className="block w-full pl-11 pr-3.5 py-2.5 border border-border rounded-lg bg-input-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  onChange={(e) => setFormData({...formData, departement: e.target.value})}
+                />
               </div>
-              <input
-                type="text"
-                placeholder="Département (ex: RH)"
-                className="block w-full pl-11 pr-3.5 py-2.5 border border-border rounded-lg bg-input-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                onChange={(e) => setFormData({...formData, departement: e.target.value})}
-              />
-            </div>
+            )}
 
             {/* Password Field */}
             <div>

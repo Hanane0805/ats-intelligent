@@ -48,6 +48,7 @@ public class SecurityConfig {
                                 "/v3/api-docs.yaml",
                                 "/api/public/**"
                         ).permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/fiches-poste", "/api/fiches-poste/**").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated()
                 )

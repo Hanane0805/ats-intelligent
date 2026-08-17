@@ -83,8 +83,24 @@ public class RagScoringService {
             return result;
 
         } catch (Exception e) {
-            log.error("Erreur pipeline RAG: {}", e.getMessage());
-            throw new RuntimeException("Erreur lors du scoring RAG: " + e.getMessage(), e);
+            log.warn("[RAG-Fallback] Microservice Python indisponible ({}). Retour d'un score par défaut.", e.getMessage());
+            // Fallback : retourner un résultat par défaut pour ne pas bloquer l'application
+            Map<String, Object> fallback = new LinkedHashMap<>();
+            fallback.put("candidatId", candidatId);
+            fallback.put("candidatNom", candidatNom);
+            fallback.put("fichePosteId", fichePosteId);
+            fallback.put("posteTitre", posteTitre);
+            fallback.put("score", 0);
+            fallback.put("ats_compliant", false);
+            fallback.put("ats_points", "[]");
+            fallback.put("analyse", "⚠️ Le microservice d'analyse IA (Python) est actuellement indisponible. Veuillez le démarrer pour obtenir une analyse complète.");
+            fallback.put("competencesMatch", List.of());
+            fallback.put("competencesManquantes", List.of());
+            fallback.put("ragDetails", Map.of(
+                    "source", "Fallback (Python service offline)",
+                    "error", e.getMessage()
+            ));
+            return fallback;
         }
     }
 

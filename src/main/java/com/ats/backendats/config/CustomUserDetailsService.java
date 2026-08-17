@@ -18,11 +18,14 @@ public class CustomUserDetailsService implements UserDetailsService {
 
     private final RecruteurRHRepository recruteurRepository;
     private final AdministrateurRHRepository administrateurRepository;
+    private final com.ats.backendats.repository.CandidatRepository candidatRepository;
 
     public CustomUserDetailsService(RecruteurRHRepository recruteurRepository,
-                                    AdministrateurRHRepository administrateurRepository) {
+                                    AdministrateurRHRepository administrateurRepository,
+                                    com.ats.backendats.repository.CandidatRepository candidatRepository) {
         this.recruteurRepository = recruteurRepository;
         this.administrateurRepository = administrateurRepository;
+        this.candidatRepository = candidatRepository;
     }
 
     @Override
@@ -36,7 +39,13 @@ public class CustomUserDetailsService implements UserDetailsService {
                                 .map(a -> new User(a.getEmail(), a.getMotDePasse(),
                                         a.getEstActif(), true, true, true,
                                         List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))))
-                                .orElseThrow(() -> new UsernameNotFoundException("Utilisateur non trouvé : " + email))
+                                .orElseGet(() ->
+                                        candidatRepository.findByEmail(email)
+                                                .map(c -> new User(c.getEmail(), c.getMotDePasse() != null ? c.getMotDePasse() : "",
+                                                        c.getEstActif(), true, true, true,
+                                                        List.of(new SimpleGrantedAuthority("ROLE_CANDIDAT"))))
+                                                .orElseThrow(() -> new UsernameNotFoundException("Utilisateur non trouvé : " + email))
+                                )
                 );
     }
 }

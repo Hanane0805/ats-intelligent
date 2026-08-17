@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Briefcase, Loader2, X, AlertCircle } from 'lucide-react';
 import { api, FichePoste, auth } from '../../../services/api';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 export default function JobPositionsPage() {
   const [activeTab, setActiveTab] = useState('All');
@@ -17,9 +18,12 @@ export default function JobPositionsPage() {
   const [createError, setCreateError] = useState('');
   const [form, setForm] = useState({ titre: '', description: '' });
 
-  const currentUser = auth.getUser();
+  // Read user client-side only to avoid SSR/hydration mismatch
+  const [currentUser, setCurrentUser] = useState<ReturnType<typeof auth.getUser>>(null);
+  const { t } = useLanguage();
 
   useEffect(() => {
+    setCurrentUser(auth.getUser());
     fetchJobs();
   }, []);
 
@@ -73,15 +77,17 @@ export default function JobPositionsPage() {
     <div className="flex flex-col gap-6 max-w-[1200px] mx-auto w-full p-4 sm:p-6 lg:p-8">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mt-2">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Job Positions</h1>
-          <p className="text-sm text-gray-500 mt-1">{jobs.length} position{jobs.length !== 1 ? 's' : ''} total</p>
+          <h1 className="text-2xl font-bold text-gray-900">{currentUser?.role === 'CANDIDAT' ? t('jobs.titleCandidate') : t('jobs.title')}</h1>
+          <p className="text-sm text-gray-500 mt-1">{jobs.length} {currentUser?.role === 'CANDIDAT' ? t('jobs.offers') : t('jobs.positions')} {t('common.total')}</p>
         </div>
-        <button
-          onClick={() => { setShowModal(true); setCreateError(''); }}
-          className="bg-[#1e3a8a] hover:bg-blue-800 text-white px-5 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" /> Create Position
-        </button>
+        {currentUser?.role !== 'CANDIDAT' && (
+          <button
+            onClick={() => { setShowModal(true); setCreateError(''); }}
+            className="bg-[#1e3a8a] hover:bg-blue-800 text-white px-5 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm self-start sm:self-auto"
+          >
+            <Plus className="w-4 h-4" /> {t('jobs.createBtn')}
+          </button>
+        )}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -147,6 +153,7 @@ export default function JobPositionsPage() {
                   <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider">Description</th>
                   <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider">Status</th>
                   <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider">Posted</th>
+                  {currentUser?.role === 'CANDIDAT' && <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -178,6 +185,21 @@ export default function JobPositionsPage() {
                     <td className="px-6 py-4 text-sm font-medium text-gray-400 whitespace-nowrap">
                       {formatDate(job.dateCreation)}
                     </td>
+                    {currentUser?.role === 'CANDIDAT' && (
+                      <td className="px-6 py-4 text-right">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            api.createCandidature(currentUser.id, job.id)
+                              .then(() => alert('Candidature envoyée avec succès !'))
+                              .catch((err) => alert('Erreur : ' + err.message));
+                          }}
+                          className="bg-primary/10 text-primary hover:bg-primary hover:text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors"
+                        >
+                          Postuler
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

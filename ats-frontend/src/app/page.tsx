@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Mail, Lock, Loader2, ArrowRight, LayoutGrid, Activity } from 'lucide-react';
+import { Mail, Lock, Loader2, ArrowRight, LayoutGrid, Activity, Briefcase } from 'lucide-react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -230,6 +230,15 @@ export default function LoginPage() {
               Créer un compte
             </Link>
           </p>
+
+          <div className="relative pt-3 border-t border-border">
+            <p className="text-center text-xs text-muted-foreground">
+              <Link href="/offres" className="inline-flex items-center gap-1 text-primary hover:underline font-medium">
+                <Briefcase className="w-3 h-3" />
+                Voir les offres d&apos;emploi sans se connecter
+              </Link>
+            </p>
+          </div>
         </div>
       </div>
     </div>
