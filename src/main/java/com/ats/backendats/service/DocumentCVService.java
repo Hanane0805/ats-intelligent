@@ -10,13 +10,15 @@ import com.ats.backendats.repository.CandidatRepository;
 import com.ats.backendats.repository.CVChunkRepository;
 import com.ats.backendats.repository.DocumentCVRepository;
 import org.apache.tika.Tika;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.file.*;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -24,25 +26,28 @@ import java.util.stream.Collectors;
 @Service
 public class DocumentCVService {
 
+    private static final Logger log = LoggerFactory.getLogger(DocumentCVService.class);
+
     private final DocumentCVRepository documentCVRepository;
     private final CandidatRepository candidatRepository;
     private final CVChunkRepository cvChunkRepository;
-    private final RagSourcingService ragSourcingService;
+    private final FlaskAiService flaskAiService;
     private final Tika tika;
 
-    @Value("${rag.python.service.url:http://localhost:5000}")
-    private String pythonServiceUrl;
+    @Value("${ats.cv.storage.path:./uploads/cv}")
+    private String storagePath;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    @Value("${ats.flask.url:http://localhost:5000}")
+    private String pythonServiceUrl;
 
     public DocumentCVService(DocumentCVRepository documentCVRepository,
                              CandidatRepository candidatRepository,
                              CVChunkRepository cvChunkRepository,
-                             RagSourcingService ragSourcingService) {
+                             FlaskAiService flaskAiService) {
         this.documentCVRepository = documentCVRepository;
         this.candidatRepository = candidatRepository;
         this.cvChunkRepository = cvChunkRepository;
-        this.ragSourcingService = ragSourcingService;
+        this.flaskAiService = flaskAiService;
         this.tika = new Tika();
     }
 
@@ -64,16 +69,25 @@ public class DocumentCVService {
         return toResponse(doc);
     }
 
+    /**
+     * Upload un CV pour un candidat existant (utilise par le candidat depuis la page jobs).
+     * Sauvegarde le fichier sur disque ET extrait le texte avec Tika.
+     */
     @Transactional
     public DocumentCVResponse uploadDocument(Long candidatId, MultipartFile file) {
+        log.info("[CV Upload] Recherche candidat ID={}...", candidatId);
         Candidat candidat = candidatRepository.findById(candidatId)
                 .orElseThrow(() -> new ResourceNotFoundException("Candidat non trouve avec l'ID : " + candidatId));
         if (file.isEmpty()) {
             throw new BadRequestException("Le fichier est vide");
         }
+        log.info("[CV Upload] Fichier recu: {}, taille: {} octets", file.getOriginalFilename(), file.getSize());
         return processAndSaveDocument(candidat, file);
     }
 
+    /**
+     * Upload par le recruteur : extrait les infos du CV et cree/maj le candidat.
+     */
     public DocumentCVResponse analyzeAndCreateCandidate(MultipartFile file) {
         if (file.isEmpty()) {
             throw new BadRequestException("Le fichier est vide");
@@ -88,11 +102,12 @@ public class DocumentCVService {
             throw new BadRequestException("Erreur lors de la lecture du fichier : " + e.getMessage());
         }
         CandidatExtractionResponse extraction = tryExtractWithPython(texteBrut, file.getOriginalFilename());
-        return saveCandidatAndDocument(extraction, texteBrut, file.getOriginalFilename());
+        return saveCandidatAndDocument(extraction, texteBrut, file.getOriginalFilename(), file);
     }
 
     @Transactional
-    public DocumentCVResponse saveCandidatAndDocument(CandidatExtractionResponse extraction, String texteBrut, String filename) {
+    public DocumentCVResponse saveCandidatAndDocument(CandidatExtractionResponse extraction, String texteBrut,
+                                                      String filename, MultipartFile file) {
         Optional<Candidat> existingCandidat = (extraction.getEmail() != null && !extraction.getEmail().isEmpty())
                 ? candidatRepository.findByEmail(extraction.getEmail())
                 : Optional.empty();
@@ -119,48 +134,59 @@ public class DocumentCVService {
         document.setNomFichier(filename);
         document.setDateUpload(LocalDate.now());
         document.setTexteBrut(texteBrut);
-        document = documentCVRepository.save(document);
 
+        // Sauvegarder le fichier sur disque
+        if (file != null && !file.isEmpty()) {
+            try {
+                String cheminFichier = saveFileToDisk(file, candidat.getId());
+                document.setCheminStockage(cheminFichier);
+            } catch (IOException e) {
+                log.warn("[CV] Impossible de sauvegarder le fichier sur disque: {}", e.getMessage());
+            }
+        }
+
+        document = documentCVRepository.save(document);
+        log.info("[CV] Document ID={} sauvegarde pour candidat ID={}", document.getId(), candidat.getId());
+
+        // Appeler Flask pour le score ATS
         try {
-            ragSourcingService.embedCandidateCV(candidat.getId(), document.getTexteBrut());
-            System.out.println("[RAG-Document] Embedding Python effectue pour candidat " + candidat.getId());
+            if (flaskAiService.isHealthy()) {
+                Map<String, Object> analyse = flaskAiService.analyzeCv(texteBrut);
+                log.info("[CV] Score ATS: {}% ({})", analyse.get("ats_score"), analyse.get("ats_method"));
+            }
         } catch (Exception e) {
-            System.err.println("[RAG-Document] Erreur embedding Python: " + e.getMessage());
+            log.warn("[CV] Erreur analyse Flask: {}", e.getMessage());
         }
 
         return toResponse(document);
     }
 
     private CandidatExtractionResponse tryExtractWithPython(String texteBrut, String filename) {
-        try {
-            String limitedText = texteBrut.length() > 3000 ? texteBrut.substring(0, 3000) : texteBrut;
+        if (flaskAiService.isHealthy()) {
+            try {
+                Map<String, Object> data = flaskAiService.extractCvInfo(texteBrut);
 
-            Map<String, String> requestBody = new LinkedHashMap<>();
-            requestBody.put("text", limitedText);
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            HttpEntity<Map<String, String>> request = new HttpEntity<>(requestBody, headers);
-
-            ResponseEntity<Map> response = restTemplate.exchange(
-                    pythonServiceUrl + "/api/rag/extract",
-                    HttpMethod.POST, request, Map.class
-            );
-
-            Map<String, Object> data = response.getBody();
-            if (data != null) {
                 CandidatExtractionResponse result = new CandidatExtractionResponse();
-                result.setNom(data.get("nom") != null ? data.get("nom").toString() : null);
-                result.setPrenom(data.get("prenom") != null ? data.get("prenom").toString() : null);
                 result.setEmail(data.get("email") != null ? data.get("email").toString() : null);
+                result.setTelephone(data.get("phone") != null ? data.get("phone").toString() : null);
 
-                if (result.getNom() != null || result.getPrenom() != null ||
-                        (result.getEmail() != null && !result.getEmail().isEmpty())) {
+                String name = data.get("name") != null ? data.get("name").toString() : null;
+                if (name != null && !name.isEmpty()) {
+                    String[] parts = name.split("\\s+", 2);
+                    if (parts.length >= 2) {
+                        result.setPrenom(parts[0]);
+                        result.setNom(parts[1]);
+                    } else {
+                        result.setPrenom(name);
+                    }
+                }
+
+                if (result.getEmail() != null || result.getNom() != null) {
                     return result;
                 }
+            } catch (Exception e) {
+                log.warn("[CV] Flask indisponible, fallback regex: {}", e.getMessage());
             }
-        } catch (Exception e) {
-            System.err.println("[CV Analysis] Python service indisponible, fallback regex: " + e.getMessage());
         }
         return extractWithSimpleSearch(texteBrut, filename);
     }
@@ -210,18 +236,65 @@ public class DocumentCVService {
         return result;
     }
 
+    /**
+     * Traite et sauvegarde un document CV : extrait le texte avec Tika,
+     * sauvegarde le fichier sur disque, et persiste en base.
+     */
     private DocumentCVResponse processAndSaveDocument(Candidat candidat, MultipartFile file) {
         DocumentCV document = new DocumentCV();
         document.setCandidat(candidat);
         document.setNomFichier(file.getOriginalFilename());
         document.setDateUpload(LocalDate.now());
+
+        // 1. Extraire le texte avec Tika (gere PDF, DOCX, etc.)
         try {
-            document.setTexteBrut(tika.parseToString(file.getInputStream()));
+            String texteBrut = tika.parseToString(file.getInputStream());
+            if (texteBrut == null || texteBrut.trim().isEmpty()) {
+                log.warn("[CV] Tika n'a pas pu extraire de texte de {}", file.getOriginalFilename());
+                texteBrut = "";
+            }
+            document.setTexteBrut(texteBrut);
+            log.info("[CV] Texte extrait: {} caracteres", texteBrut.length());
         } catch (Exception e) {
+            log.error("[CV] Erreur extraction Tika: {}", e.getMessage());
             throw new BadRequestException("Erreur lors de la lecture du fichier : " + e.getMessage());
         }
+
+        // 2. Sauvegarder le fichier physique sur disque
+        try {
+            String cheminFichier = saveFileToDisk(file, candidat.getId());
+            document.setCheminStockage(cheminFichier);
+            log.info("[CV] Fichier sauvegarde sur disque: {}", cheminFichier);
+        } catch (IOException e) {
+            log.warn("[CV] Impossible de sauvegarder sur disque: {}", e.getMessage());
+            // Le document est quand meme sauvegarde en base avec le texte
+        }
+
+        // 3. Persister en base de donnees
         document = documentCVRepository.save(document);
+        log.info("[CV] Document ID={} cree pour candidat ID={}, chemin={}",
+                document.getId(), candidat.getId(), document.getCheminStockage());
+
         return toResponse(document);
+    }
+
+    /**
+     * Sauvegarde le fichier uploadé dans le repertoire de stockage.
+     */
+    private String saveFileToDisk(MultipartFile file, Long candidatId) throws IOException {
+        Path storageDir = Paths.get(storagePath);
+        if (!Files.exists(storageDir)) {
+            Files.createDirectories(storageDir);
+        }
+
+        // Nom de fichier unique : candidatId_timestamp_nomOriginal
+        String originalName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "cv.pdf";
+        String safeName = originalName.replaceAll("[^a-zA-Z0-9._-]", "_");
+        String fileName = candidatId + "_" + System.currentTimeMillis() + "_" + safeName;
+        Path filePath = storageDir.resolve(fileName);
+
+        Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+        return filePath.toAbsolutePath().toString();
     }
 
     @Transactional
@@ -229,6 +302,16 @@ public class DocumentCVService {
         if (!documentCVRepository.existsById(id)) {
             throw new ResourceNotFoundException("Document CV non trouve avec l'ID : " + id);
         }
+        // Supprimer le fichier physique si present
+        documentCVRepository.findById(id).ifPresent(doc -> {
+            if (doc.getCheminStockage() != null) {
+                try {
+                    Files.deleteIfExists(Paths.get(doc.getCheminStockage()));
+                } catch (IOException e) {
+                    log.warn("[CV] Impossible de supprimer le fichier: {}", e.getMessage());
+                }
+            }
+        });
         documentCVRepository.deleteById(id);
     }
 

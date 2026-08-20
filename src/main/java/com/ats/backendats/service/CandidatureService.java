@@ -2,7 +2,6 @@ package com.ats.backendats.service;
 
 import com.ats.backendats.dto.request.CandidatureRequest;
 import com.ats.backendats.dto.request.CandidatureUpdateRequest;
-import com.ats.backendats.dto.request.HistoriqueRecrutementRequest;
 import com.ats.backendats.dto.response.AnalyseIAResponse;
 import com.ats.backendats.dto.response.CandidatureResponse;
 import com.ats.backendats.exception.BadRequestException;
@@ -18,6 +17,8 @@ import com.ats.backendats.repository.CandidatRepository;
 import com.ats.backendats.repository.CandidatureRepository;
 import com.ats.backendats.repository.DocumentCVRepository;
 import com.ats.backendats.repository.FichePosteRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,31 +28,30 @@ import java.util.stream.Collectors;
 @Service
 public class CandidatureService {
 
+    private static final Logger log = LoggerFactory.getLogger(CandidatureService.class);
+
     private final CandidatureRepository candidatureRepository;
     private final CandidatRepository candidatRepository;
     private final FichePosteRepository fichePosteRepository;
     private final AnalyseIARepository analyseIARepository;
     private final DocumentCVRepository documentCVRepository;
-    private final N8nWebhookService n8nWebhookService;
-    private final RagScoringService ragScoringService;
     private final HistoriqueRecrutementService historiqueService;
+    private final FlaskAiService flaskAiService;
 
     public CandidatureService(CandidatureRepository candidatureRepository,
                               CandidatRepository candidatRepository,
                               FichePosteRepository fichePosteRepository,
                               AnalyseIARepository analyseIARepository,
                               DocumentCVRepository documentCVRepository,
-                              N8nWebhookService n8nWebhookService,
-                              RagScoringService ragScoringService,
-                              HistoriqueRecrutementService historiqueService) {
+                              HistoriqueRecrutementService historiqueService,
+                              FlaskAiService flaskAiService) {
         this.candidatureRepository = candidatureRepository;
         this.candidatRepository = candidatRepository;
         this.fichePosteRepository = fichePosteRepository;
         this.analyseIARepository = analyseIARepository;
         this.documentCVRepository = documentCVRepository;
-        this.n8nWebhookService = n8nWebhookService;
-        this.ragScoringService = ragScoringService;
         this.historiqueService = historiqueService;
+        this.flaskAiService = flaskAiService;
     }
 
     public List<CandidatureResponse> getAllCandidatures() {
@@ -101,7 +101,6 @@ public class CandidatureService {
         candidature.setDatePostulation(java.time.LocalDate.now());
         candidature = candidatureRepository.save(candidature);
         saveHistory(candidature, null, "EN_ATTENTE");
-        n8nWebhookService.notifyCandidatureCreated(candidature);
         return toResponse(candidature);
     }
 
@@ -119,9 +118,8 @@ public class CandidatureService {
         candidature = candidatureRepository.save(candidature);
         String nouveauStatut = candidature.getStatut() != null ? candidature.getStatut().name() : null;
         if (!Objects.equals(ancienStatut, nouveauStatut)) {
-            saveHistory(candidature, ancienStatut, nouveauStatut);
+            saveHistory(candidature, ancienStatut, nouveauStatut, request.getCommentaire());
         }
-        n8nWebhookService.notifyCandidatureUpdated(candidature, ancienStatut);
         return toResponse(candidature);
     }
 
@@ -146,109 +144,236 @@ public class CandidatureService {
         FichePoste poste = candidature.getFichePoste();
         if (poste == null) throw new BadRequestException("Aucune fiche de poste associee.");
 
-        Candidat candidat = candidature.getCandidat();
-        String candidatNom = (candidat.getNom() != null ? candidat.getNom() : "")
-                + " " + (candidat.getPrenom() != null ? candidat.getPrenom() : "");
-
-        List<DocumentCV> cvs = documentCVRepository.findByCandidatId(candidat.getId());
-        String cvText = "Aucun CV fourni.";
-        if (!cvs.isEmpty()) {
-            cvText = cvs.get(0).getTexteBrut();
+        // ===== VERIFICATION CV =====
+        Long candidatId = candidature.getCandidat().getId();
+        log.info("[Analyse] Recherche CV pour candidat ID={}...", candidatId);
+        List<DocumentCV> cvs = documentCVRepository.findByCandidatId(candidatId);
+        if (cvs.isEmpty()) {
+            log.warn("[Analyse] Aucun CV pour candidat ID={}", candidatId);
+            candidature.setStatut(StatutCandidature.EN_ATTENTE);
+            candidatureRepository.save(candidature);
+            throw new BadRequestException("Aucun CV trouve pour ce candidat (ID: " + candidatId + "). Veuillez d'abord televerser un CV.");
         }
+        // Prendre le CV le plus recent
+        DocumentCV cvDoc = cvs.get(0);
+        for (DocumentCV c : cvs) {
+            if (c.getDateUpload() != null && cvDoc.getDateUpload() != null
+                    && c.getDateUpload().isAfter(cvDoc.getDateUpload())) {
+                cvDoc = c;
+            }
+        }
+
+        String cvText = cvDoc.getTexteBrut();
         if (cvText == null || cvText.isBlank()) {
-            cvText = "Aucun CV fourni.";
+            log.warn("[Analyse] CV ID={} vide pour candidat ID={}", cvDoc.getId(), candidatId);
+            candidature.setStatut(StatutCandidature.EN_ATTENTE);
+            candidatureRepository.save(candidature);
+            throw new BadRequestException("Le CV de ce candidat est vide ou illisible (Document ID: " + cvDoc.getId() + "). Veuillez televerser un CV valide.");
         }
+        log.info("[Analyse] CV trouve: ID={}, {} caracteres", cvDoc.getId(), cvText.length());
 
-        String jobDescription = poste.getTitre() + " " + (poste.getDescription() != null ? poste.getDescription() : "");
+        // Construire la description du poste
+        String jobDescription = poste.getTitre();
+        if (poste.getDescription() != null) {
+            jobDescription += " " + poste.getDescription();
+        }
 
         try {
-            Map<String, Object> ragResult = ragScoringService.scoreWithRAG(
-                    candidat.getId(),
-                    candidatNom.trim(),
-                    poste.getId(),
-                    poste.getTitre(),
-                    cvText,
-                    jobDescription
-            );
+            // ===== APPEL AU SERVICE FLASK IA =====
+            Map<String, Object> result = flaskAiService.fullAnalysis(cvText, jobDescription);
 
-            int score = ((Number) ragResult.get("score")).intValue();
-            String rawResponse = (String) ragResult.get("rawResponse");
+            // Extraire le score ATS
+            @SuppressWarnings("unchecked")
+            Map<String, Object> analyseAts = (Map<String, Object>) result.get("analyse_ats");
+            double atsScore = ((Number) analyseAts.get("ats_score")).doubleValue();
 
-            String syntheseForces = extractJsonStringField(rawResponse, "analyse");
-            String competencesMatch = extractJsonListAsString(rawResponse, "competencesMatch");
-            String competencesManquantes = extractJsonListAsString(rawResponse, "competencesManquantes");
+            // Extraire les points forts et faiblesses
+            @SuppressWarnings("unchecked")
+            List<String> pointsForts = (List<String>) analyseAts.get("points_forts");
+            @SuppressWarnings("unchecked")
+            List<String> aAmeliorer = (List<String>) analyseAts.get("a_ameliorer");
+            String atsExplication = (String) analyseAts.get("explication");
 
-            String forcesText = (competencesMatch != null && !competencesMatch.isEmpty())
-                    ? competencesMatch : (syntheseForces != null ? syntheseForces : "Analyse en cours");
-            String faiblessesText = (competencesManquantes != null && !competencesManquantes.isEmpty())
-                    ? competencesManquantes : "Aucune faiblesse majeure identifiee";
-            String recommandation = syntheseForces != null ? syntheseForces : "Candidature a evaluer en entretien.";
+            // Extraire le score de compatibilite si disponible
+            Double compatScore = null;
+            String recommandationLisible = null;
+            if (result.containsKey("compatibilite")) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> compat = (Map<String, Object>) result.get("compatibilite");
+                compatScore = ((Number) compat.get("total_score")).doubleValue();
 
+                // Utiliser la recommandation lisible de Flask si disponible
+                recommandationLisible = (String) compat.get("recommandation");
+                if (recommandationLisible == null || recommandationLisible.isBlank()) {
+                    // Fallback: generer une recommandation ici si Flask ne l'a pas fait
+                    @SuppressWarnings("unchecked")
+                    List<String> matchedSkills = (List<String>) compat.getOrDefault("matched_skills", Collections.emptyList());
+                    @SuppressWarnings("unchecked")
+                    List<String> missingSkills = (List<String>) compat.getOrDefault("missing_skills", Collections.emptyList());
+                    recommandationLisible = buildRecommendation(
+                            compatScore,
+                            (Double) compat.getOrDefault("semantic_similarity", 0.0),
+                            (Double) compat.getOrDefault("skill_match", 0.0),
+                            (Double) compat.getOrDefault("experience_match", 0.0),
+                            ((Number) compat.getOrDefault("cv_experience_years", 0)).intValue(),
+                            ((Number) compat.getOrDefault("required_experience_years", 0)).intValue(),
+                            matchedSkills,
+                            missingSkills
+                    );
+                }
+            }
+
+            // Construire les syntheses
+            String forcesText = pointsForts != null && !pointsForts.isEmpty()
+                    ? String.join(", ", pointsForts)
+                    : "Analyse en cours";
+            String faiblessesText = aAmeliorer != null && !aAmeliorer.isEmpty()
+                    ? String.join(", ", aAmeliorer)
+                    : "Aucune faiblesse majeure identifiee";
+
+            // Score final
+            double finalScore = (compatScore != null) ? compatScore : atsScore;
+
+            // Recommandation finale
+            String recommandationFinale;
+            if (recommandationLisible != null) {
+                recommandationFinale = recommandationLisible;
+            } else {
+                // Fallback si pas de compatibilite calculee (pas d'offre fournie)
+                recommandationFinale = buildAtsOnlyRecommendation(atsScore, pointsForts, aAmeliorer, atsExplication);
+            }
+
+            // Sauvegarder l'analyse
             AnalyseIA analyse = new AnalyseIA();
-            analyse.setScore(Math.round(score * 10.0) / 10.0);
+            analyse.setScore(finalScore);
             analyse.setSyntheseForces(forcesText);
             analyse.setSyntheseFaiblesses(faiblessesText);
-            analyse.setRecommandation(recommandation);
+            analyse.setRecommandation(recommandationFinale);
             analyse.setDateAnalyse(java.time.LocalDate.now());
             analyse = analyseIARepository.save(analyse);
 
             candidature.setAnalyseIA(analyse);
-            candidature.setScoreCompatibilite(analyse.getScore() / 100.0);
+            candidature.setScoreCompatibilite(finalScore / 100.0);
             candidature.setStatut(StatutCandidature.EN_ATTENTE);
             candidature = candidatureRepository.save(candidature);
 
-            n8nWebhookService.notifyCandidatureUpdated(candidature, "EN_ANALYSE");
+            saveHistory(candidature, "EN_ANALYSE", "EN_ATTENTE");
+            log.info("[Analyse] Terminee pour candidature ID={} - Score: {}%", candidatureId, finalScore);
             return toResponse(candidature);
 
+        } catch (BadRequestException e) {
+            throw e;
         } catch (Exception e) {
-            System.err.println("Erreur RAG lors de l'analyse : " + e.getMessage());
-            e.printStackTrace();
+            log.error("[Analyse] Erreur IA : {}", e.getMessage(), e);
             candidature.setStatut(StatutCandidature.EN_ATTENTE);
             candidatureRepository.save(candidature);
             throw new BadRequestException("L'analyse IA a echoue : " + e.getMessage());
         }
     }
 
-    private String extractJsonStringField(String json, String fieldName) {
-        if (json == null) return null;
-        String searchKey = "\"" + fieldName + "\":";
-        int idx = json.indexOf(searchKey);
-        if (idx < 0) return null;
-        int startQuote = json.indexOf("\"", idx + searchKey.length());
-        if (startQuote < 0) return null;
-        int end = startQuote + 1;
-        while (end < json.length()) {
-            char c = json.charAt(end);
-            if (c == '\\' && end + 1 < json.length()) {
-                end += 2;
-                continue;
-            }
-            if (c == '"') break;
-            end++;
+    /**
+     * Genere une recommandation lisible quand on a le score de compatibilite.
+     */
+    private String buildRecommendation(double totalScore, double semantic, double skillMatch,
+                                       double expMatch, int cvExp, int requiredExp,
+                                       List<String> matchedSkills, List<String> missingSkills) {
+        StringBuilder sb = new StringBuilder();
+
+        // Appreciation globale
+        if (totalScore >= 75) {
+            sb.append(String.format("Excellent profil ! Le candidat obtient un score de compatibilite de %.1f%%, " +
+                    "ce qui indique une tres bonne adequation avec le poste.", totalScore));
+        } else if (totalScore >= 55) {
+            sb.append(String.format("Bon profil globalement compatible avec le poste (score: %.1f%%). " +
+                    "Quelques points d'amelioration sont possibles.", totalScore));
+        } else if (totalScore >= 35) {
+            sb.append(String.format("Profil partiellement compatible (score: %.1f%%). " +
+                    "Des competences ou de l'experience manquantes limitent l'adequation.", totalScore));
+        } else {
+            sb.append(String.format("Profil peu compatible avec le poste (score: %.1f%%). " +
+                    "Des ecarts significatifs existent par rapport aux exigences.", totalScore));
         }
-        String value = json.substring(startQuote + 1, end);
-        value = value.replace("\\n", " ").replace("\\t", " ");
-        if (value.trim().isEmpty()) return null;
-        return value;
+
+        // Competences
+        if (matchedSkills != null && !matchedSkills.isEmpty()) {
+            String skills = String.join(", ", matchedSkills.subList(0, Math.min(8, matchedSkills.size())));
+            sb.append(" Competences correspondantes : ").append(skills).append(".");
+        }
+        if (missingSkills != null && !missingSkills.isEmpty()) {
+            String missing = String.join(", ", missingSkills.subList(0, Math.min(6, missingSkills.size())));
+            sb.append(" Competences manquantes : ").append(missing).append(".");
+        }
+
+        // Experience
+        if (requiredExp > 0) {
+            if (cvExp >= requiredExp) {
+                sb.append(String.format(" Experience conforme (%d ans vs %d requis).", cvExp, requiredExp));
+            } else {
+                sb.append(String.format(" Experience insuffisante (%d ans vs %d requis).", cvExp, requiredExp));
+            }
+        }
+
+        // Recommandation
+        if (totalScore >= 75) {
+            sb.append(" Ce candidat merite une entrevue approfondie.");
+        } else if (totalScore >= 55) {
+            sb.append(" Candidat a envisager pour un entretien.");
+        } else {
+            sb.append(" D'autres candidats plus adaptes devraient etre privilgies.");
+        }
+
+        return sb.toString();
     }
 
-    private String extractJsonListAsString(String json, String fieldName) {
-        if (json == null) return null;
-        String searchKey = "\"" + fieldName + "\":";
-        int idx = json.indexOf(searchKey);
-        if (idx < 0) return null;
-        int start = json.indexOf("[", idx + searchKey.length());
-        if (start < 0) return null;
-        int end = json.indexOf("]", start);
-        if (end < 0) return null;
-        String listContent = json.substring(start + 1, end);
-        StringBuilder result = new StringBuilder();
-        String[] parts = listContent.split("\"");
-        for (int i = 1; i < parts.length; i += 2) {
-            if (i > 1) result.append(", ");
-            result.append(parts[i]);
+    /**
+     * Genere une recommandation quand on a seulement le score ATS (pas d'offre).
+     */
+    private String buildAtsOnlyRecommendation(double atsScore, List<String> pointsForts,
+                                              List<String> aAmeliorer, String atsExplication) {
+        StringBuilder sb = new StringBuilder();
+
+        if (atsScore >= 70) {
+            sb.append(String.format("CV de bonne qualite (score ATS: %.1f%%). ", atsScore));
+        } else if (atsScore >= 45) {
+            sb.append(String.format("CV de qualite moyenne (score ATS: %.1f%%). ", atsScore));
+        } else {
+            sb.append(String.format("CV de qualite insuffisante (score ATS: %.1f%%). ", atsScore));
         }
-        return result.length() > 0 ? result.toString() : null;
+
+        if (pointsForts != null && !pointsForts.isEmpty()) {
+            sb.append("Points forts : ").append(String.join(", ", pointsForts)).append(".");
+        }
+        if (aAmeliorer != null && !aAmeliorer.isEmpty()) {
+            sb.append(" A ameliorer : ").append(String.join(", ", aAmeliorer)).append(".");
+        }
+
+        if (atsScore >= 70) {
+            sb.append(" Ce CV est bien structure et passe les filtres ATS efficacement.");
+        } else if (atsScore >= 45) {
+            sb.append(" Ce CV pourrait etre optimise pour mieux passer les filtres ATS.");
+        } else {
+            sb.append(" Ce CV necessite des ameliorations importantes pour etre visible par les filtres ATS.");
+        }
+
+        return sb.toString();
+    }
+
+    private void saveHistory(Candidature candidature, String ancienStatut, String nouveauStatut) {
+        saveHistory(candidature, ancienStatut, nouveauStatut, "Changement de statut automatique");
+    }
+
+    private void saveHistory(Candidature candidature, String ancienStatut, String nouveauStatut, String commentaire) {
+        try {
+            com.ats.backendats.dto.request.HistoriqueRecrutementRequest req =
+                    new com.ats.backendats.dto.request.HistoriqueRecrutementRequest();
+            req.setCandidatureId(candidature.getId());
+            req.setAncienStatut(ancienStatut);
+            req.setNouveauStatut(nouveauStatut);
+            req.setCommentaire(commentaire != null ? commentaire : "Changement de statut automatique");
+            historiqueService.createHistorique(req);
+        } catch (Exception e) {
+            System.err.println("Erreur historique: " + e.getMessage());
+        }
     }
 
     private CandidatureResponse toResponse(Candidature c) {

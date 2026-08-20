@@ -6,4 +6,5 @@ import lombok.Data;
 public class CandidatureUpdateRequest {
     private String statut;
     private Double scoreCompatibilite;
+    private String commentaire;
 }

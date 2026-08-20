@@ -42,11 +42,13 @@ public class SecurityConfig {
                                 "/api/administrateurs",
                                 "/api/recruteurs",
                                 "/api/n8n/**",
+                                "/api/ai/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
                                 "/v3/api-docs/**",
                                 "/v3/api-docs.yaml",
-                                "/api/public/**"
+                                "/api/public/**",
+                                "/api/fiches-poste/public/**"
                         ).permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/fiches-poste", "/api/fiches-poste/**").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
