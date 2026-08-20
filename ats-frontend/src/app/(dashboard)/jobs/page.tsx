@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Search, Plus, Briefcase, Loader2, X, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Search, Plus, Briefcase, Loader2, X, AlertCircle, Upload, FileText, CheckCircle2 } from 'lucide-react';
 import { api, FichePoste, auth } from '../../../services/api';
 import { useLanguage } from '../../../contexts/LanguageContext';
 
@@ -12,13 +12,21 @@ export default function JobPositionsPage() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
 
-  // Modal state
+  // Create Position Modal state
   const [showModal, setShowModal] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
   const [form, setForm] = useState({ titre: '', description: '' });
 
-  // Read user client-side only to avoid SSR/hydration mismatch
+  // Apply Modal state (CV upload)
+  const [showApplyModal, setShowApplyModal] = useState(false);
+  const [selectedJobForApply, setSelectedJobForApply] = useState<FichePoste | null>(null);
+  const [cvFile, setCvFile] = useState<File | null>(null);
+  const [submittingApply, setSubmittingApply] = useState(false);
+  const [applySuccess, setApplySuccess] = useState(false);
+  const [applyError, setApplyError] = useState('');
+  const cvInputRef = useRef<HTMLInputElement>(null);
+
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof auth.getUser>>(null);
   const { t } = useLanguage();
 
@@ -57,6 +65,62 @@ export default function JobPositionsPage() {
       setCreateError(err.message || 'Erreur lors de la création.');
     } finally {
       setCreating(false);
+    }
+  };
+
+  // ===== APPLY WITH CV =====
+  const handleApplyClick = (job: FichePoste) => {
+    setSelectedJobForApply(job);
+    setCvFile(null);
+    setApplySuccess(false);
+    setApplyError('');
+    setShowApplyModal(true);
+  };
+
+  // ===== SOUMISSION DE LA CANDIDATURE (CORRIGÉE) =====
+  const submitApplication = async () => {
+    if (!selectedJobForApply || !cvFile || !currentUser?.id) {
+      setApplyError('Informations manquantes (candidat, fichier, poste).');
+      return;
+    }
+    setSubmittingApply(true);
+    setApplyError('');
+
+    try {
+      // 1. Créer la candidature (le paramètre attendu est l'ID du poste)
+      await api.createCandidature(currentUser.id, selectedJobForApply.id);
+
+      // 2. Upload du CV (chemin avec l'ID dans l'URL, PAS en query string)
+      const formData = new FormData();
+      formData.append('file', cvFile);
+
+           const token = localStorage.getItem('ats_token') || '';
+      const uploadRes = await fetch('http://localhost:8080/api/documents-cv/upload/' + currentUser.id, {
+        method: 'POST',
+        headers: token ? { Authorization: 'Bearer ' + token } : {},
+        body: formData,
+      });
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json().catch(() => ({}));
+       throw new Error(err.message || err.error || JSON.stringify(err) || 'Erreur upload CV');
+      }
+
+      setApplySuccess(true);
+      setTimeout(() => {
+        setShowApplyModal(false);
+        setApplySuccess(false);
+      }, 2500);
+    } catch (err: any) {
+      console.error('Erreur upload:', err);
+      if (err.response) {
+        setApplyError(`Erreur ${err.response.status} : ${err.response.data?.message || err.response.statusText}`);
+      } else if (err.request) {
+        setApplyError('Impossible de contacter le serveur. Vérifiez votre connexion.');
+      } else {
+        setApplyError(err.message || 'Erreur lors de la candidature.');
+      }
+    } finally {
+      setSubmittingApply(false);
     }
   };
 
@@ -187,12 +251,10 @@ export default function JobPositionsPage() {
                     </td>
                     {currentUser?.role === 'CANDIDAT' && (
                       <td className="px-6 py-4 text-right">
-                        <button 
+                        <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            api.createCandidature(currentUser.id, job.id)
-                              .then(() => alert('Candidature envoyée avec succès !'))
-                              .catch((err) => alert('Erreur : ' + err.message));
+                            handleApplyClick(job);
                           }}
                           className="bg-primary/10 text-primary hover:bg-primary hover:text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors"
                         >
@@ -208,7 +270,124 @@ export default function JobPositionsPage() {
         )}
       </div>
 
-      {/* Create Position Modal */}
+      {/* ===== APPLY WITH CV MODAL ===== */}
+      {showApplyModal && selectedJobForApply && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Postuler</h2>
+                <p className="text-sm text-gray-500 mt-0.5">{selectedJobForApply.titre}</p>
+              </div>
+              <button
+                onClick={() => setShowApplyModal(false)}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6">
+              {applySuccess ? (
+                <div className="flex flex-col items-center gap-4 py-8">
+                  <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center">
+                    <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+                  </div>
+                  <div className="text-center">
+                    <p className="font-bold text-gray-900 text-lg">Candidature envoyée !</p>
+                    <p className="text-sm text-gray-500 mt-1">Votre CV a été soumis avec succès.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-5">
+                  {/* Job summary */}
+                  <div className="flex items-center gap-3 px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl">
+                    <Briefcase className="w-5 h-5 text-[#1e3a8a] flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-gray-900 truncate">{selectedJobForApply.titre}</p>
+                      <p className="text-xs text-gray-500">{selectedJobForApply.recruteurNom || 'Recruteur'}</p>
+                    </div>
+                  </div>
+
+                  {/* CV Upload Zone */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-sm font-bold text-gray-700">
+                      Votre CV <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="file"
+                      ref={cvInputRef}
+                      accept=".pdf,.doc,.docx"
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          setCvFile(e.target.files[0]);
+                        }
+                      }}
+                    />
+                    <div
+                      onClick={() => cvInputRef.current?.click()}
+                      className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all
+                        ${cvFile
+                          ? 'border-emerald-300 bg-emerald-50/50'
+                          : 'border-gray-200 hover:border-[#1e3a8a] hover:bg-blue-50/30'
+                        }
+                      `}
+                    >
+                      {cvFile ? (
+                        <>
+                          <FileText className="w-8 h-8 text-emerald-600 mb-2" />
+                          <p className="text-sm font-bold text-gray-900">{cvFile.name}</p>
+                          <p className="text-xs text-gray-400 mt-1">{(cvFile.size / 1024).toFixed(1)} KB</p>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                          <p className="text-sm font-medium text-gray-700">Cliquez pour sélectionner votre CV</p>
+                          <p className="text-xs text-gray-400 mt-1">PDF, DOC, DOCX — Max 10 MB</p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {applyError && (
+                    <div className="flex items-center gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-600 text-sm font-medium">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      {applyError}
+                    </div>
+                  )}
+
+                  {/* Buttons */}
+                  <div className="flex gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowApplyModal(false)}
+                      className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="button"
+                      onClick={submitApplication}
+                      disabled={submittingApply || !cvFile}
+                      className="flex-1 bg-[#1e3a8a] hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors"
+                    >
+                      {submittingApply
+                        ? <><Loader2 className="w-4 h-4 animate-spin" /> Envoi en cours...</>
+                        : <><Upload className="w-4 h-4" /> Envoyer ma candidature</>
+                      }
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== CREATE POSITION MODAL (Recruiter only) ===== */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-in slide-in-from-bottom-4 duration-300">

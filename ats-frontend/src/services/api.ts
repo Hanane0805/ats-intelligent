@@ -373,4 +373,57 @@ export const api = {
     if (!response.ok) throw new Error(data.message || `Erreur ${response.status}`);
     return data;
   },
+
+    // CV Upload (PathVariable : /api/documents-cv/upload/{candidatId})
+  uploadCv: async (candidatId: number, file: File): Promise<DocumentCVResponse> => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const token = auth.getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const response = await fetch(`${BASE_URL}/api/documents-cv/upload/${candidatId}`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (response.status === 401) {
+      await auth.clearSession();
+      window.location.href = '/';
+      throw new Error('Session expirée.');
+    }
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || `Erreur ${response.status}`);
+    return data;
+  },
+
+  // Récupérer les CVs d'un candidat
+  getCvsByCandidat: (candidatId: number): Promise<DocumentCVResponse[]> =>
+    request<DocumentCVResponse[]>(`/api/documents-cv/candidat/${candidatId}`),
+
+  // Télécharger un CV (retourne un blob, pas du JSON)
+  downloadCV: async (docId: number, nomFichier: string): Promise<void> => {
+    const token = auth.getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const response = await fetch(`${BASE_URL}/api/documents-cv/${docId}/download`, {
+      headers,
+    });
+
+    if (!response.ok) throw new Error('CV non trouvé');
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = nomFichier;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  },
 };
