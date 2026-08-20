@@ -112,7 +112,7 @@ export default function RankingsPage() {
   const getInitials = (nom: string) => nom ? nom.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : '??';
 
   return (
-    <div className="flex flex-col gap-6 max-w-[1200px] mx-auto w-full pb-10">
+    <div className="flex flex-col gap-6 max-w-[1200px] mx-auto w-full p-4 sm:p-6 lg:p-8">
       {/* Header */}
       <div className="flex flex-wrap justify-between items-center mt-2 gap-4">
         <div>
@@ -343,8 +343,8 @@ export default function RankingsPage() {
             
             {/* Body */}
             <div className="p-6 overflow-y-auto flex-1 bg-slate-50/50">
-              <div className="flex gap-6 mb-6">
-                <div className="flex flex-col items-center justify-center bg-white border border-gray-100 rounded-xl p-6 shadow-sm min-w-[140px]">
+              <div className="flex flex-col sm:flex-row gap-6 mb-6">
+                <div className="flex flex-col items-center justify-center bg-white border border-gray-100 rounded-xl p-6 shadow-sm sm:min-w-[140px]">
                   <span className={`text-4xl font-black ${getScoreColor(selectedCandidature.analyseIA.score).text}`}>
                     {Math.round(selectedCandidature.analyseIA.score)}%
                   </span>

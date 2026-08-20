@@ -206,13 +206,13 @@ export default function CandidatesPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 max-w-[1200px] mx-auto w-full pb-10">
-      <div className="flex justify-between items-center mt-2">
+    <div className="flex flex-col gap-6 max-w-[1200px] mx-auto w-full p-4 sm:p-6 lg:p-8">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mt-2">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Candidates</h1>
           <p className="text-sm text-gray-500 mt-1">{candidats.length} candidate{candidats.length !== 1 ? 's' : ''} in database</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <button
             onClick={loadData}
             disabled={loading}

@@ -23,7 +23,7 @@ const SESSION_COOKIE = 'ats_session';
  * exactly the bug that made the old middleware.ts silently stop protecting
  * most of the app.
  */
-const PUBLIC_PATHS = ['/', '/signup', '/register', '/forgot-password', '/auth/callback', '/auth/google/callback'];
+const PUBLIC_PATHS = ['/', '/signup', '/register', '/forgot-password', '/auth/callback', '/auth/google/callback', '/offres'];
 
 /** Paths that should redirect an already-authenticated user away. */
 const AUTH_ONLY_PATHS = ['/', '/signup', '/register'];
@@ -45,8 +45,15 @@ export function middleware(request: NextRequest) {
   const isAuthOnlyPath = AUTH_ONLY_PATHS.some((path) => matchesPath(pathname, path));
   const isPublicPath = PUBLIC_PATHS.some((path) => matchesPath(pathname, path));
 
-  // Already logged in? Don't show login/register/signup again.
+  // Default redirect for root based on role
   if (hasSession && isAuthOnlyPath) {
+    try {
+      const decoded = jwtDecode<any>(token!);
+      const role = decoded.role;
+      if (role === 'CANDIDAT' || role === 'ROLE_CANDIDAT') {
+        return NextResponse.redirect(new URL('/my-applications', request.url));
+      }
+    } catch (e) {}
     return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 
@@ -55,19 +62,30 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
-  // RBAC: Check admin paths
+  // RBAC checks
   if (hasSession) {
-    const isAdminPath = ADMIN_PATHS.some((path) => matchesPath(pathname, path));
-    if (isAdminPath) {
-      try {
-        const decoded = jwtDecode<any>(token!);
-        const role = decoded.role;
-        if (role !== 'ADMIN' && role !== 'ROLE_ADMIN') {
-          return NextResponse.redirect(new URL('/dashboard', request.url));
-        }
-      } catch (e) {
-        // If token is malformed, backend will reject it anyway
+    try {
+      const decoded = jwtDecode<any>(token!);
+      const role = decoded.role;
+      
+      const isAdminPath = ADMIN_PATHS.some((path) => matchesPath(pathname, path));
+      if (isAdminPath && role !== 'ADMIN' && role !== 'ROLE_ADMIN') {
+        return NextResponse.redirect(new URL('/dashboard', request.url));
       }
+
+      // Candidate restrictions
+      if (role === 'CANDIDAT' || role === 'ROLE_CANDIDAT') {
+        const isCandidateAllowedPath = 
+          matchesPath(pathname, '/my-applications') || 
+          matchesPath(pathname, '/jobs') || 
+          matchesPath(pathname, '/profil');
+          
+        if (!isCandidateAllowedPath) {
+          return NextResponse.redirect(new URL('/my-applications', request.url));
+        }
+      }
+    } catch (e) {
+      // If token is malformed, backend will reject it anyway
     }
   }
 

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Users, Briefcase, FileText, X, Loader2 } from 'lucide-react';
+import { Search, Users, Briefcase, FileText, X, Loader2, Menu } from 'lucide-react';
 import { auth, User, api } from '../../services/api';
 import NotificationCenter from '../NotificationCenter';
 import { useRouter } from 'next/navigation';
@@ -15,7 +15,11 @@ function useDebounce<T>(value: T, delay: number): T {
   return debounced;
 }
 
-export default function Navbar() {
+interface NavbarProps {
+  onMenuClick?: () => void;
+}
+
+export default function Navbar({ onMenuClick }: NavbarProps) {
   const [user, setUser] = useState<User | null>(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<{ candidats: any[]; jobs: any[]; candidatures: any[] }>({ candidats: [], jobs: [], candidatures: [] });
@@ -74,10 +78,19 @@ export default function Navbar() {
   };
 
   return (
-    <div className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-6 flex-shrink-0 shadow-sm">
+    <div className="h-16 bg-white border-b border-gray-100 flex items-center gap-2 sm:gap-4 justify-between px-3 sm:px-6 flex-shrink-0 shadow-sm">
+
+      {/* Mobile menu toggle */}
+      <button
+        onClick={onMenuClick}
+        aria-label="Open menu"
+        className="lg:hidden flex-shrink-0 p-2 -ml-1 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors"
+      >
+        <Menu className="w-5 h-5" />
+      </button>
 
       {/* Global Search */}
-      <div className="relative w-full max-w-sm" ref={searchRef}>
+      <div className="relative flex-1 min-w-0 max-w-sm" ref={searchRef}>
         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
         {searching && <Loader2 className="absolute right-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 animate-spin" />}
         {query && !searching && (
@@ -92,12 +105,12 @@ export default function Navbar() {
           value={query}
           onChange={e => setQuery(e.target.value)}
           onFocus={() => total > 0 && setShowDropdown(true)}
-          className="w-full pl-10 pr-9 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+          className="w-full min-w-0 pl-10 pr-9 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
         />
 
         {/* Dropdown */}
         {showDropdown && (
-          <div className="absolute top-11 left-0 w-[420px] bg-white rounded-xl shadow-2xl border border-gray-200 z-50 overflow-hidden">
+          <div className="absolute top-11 left-0 w-[92vw] sm:w-[420px] max-w-[420px] bg-white rounded-xl shadow-2xl border border-gray-200 z-50 overflow-hidden">
             {total === 0 ? (
               <div className="px-4 py-6 text-center text-sm text-gray-400">Aucun résultat pour « {query} »</div>
             ) : (
@@ -176,11 +189,11 @@ export default function Navbar() {
       </div>
 
       {/* Right controls */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
         <NotificationCenter />
-        <div className="h-8 w-px bg-gray-200" />
+        <div className="hidden sm:block h-8 w-px bg-gray-200" />
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-[#1e3a8a] text-white flex items-center justify-center font-bold text-sm shadow-sm cursor-pointer"
+          <div className="w-9 h-9 rounded-full bg-[#1e3a8a] text-white flex items-center justify-center font-bold text-sm shadow-sm cursor-pointer flex-shrink-0"
             onClick={() => router.push('/profil')}>
             {user ? `${user.nom?.[0] || ''}${user.prenom?.[0] || ''}`.toUpperCase() : '??'}
           </div>

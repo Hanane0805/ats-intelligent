@@ -45,23 +45,23 @@ export default function AuditLogsPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 max-w-[1200px] mx-auto w-full pb-10">
-      <div className="flex justify-between items-center mt-2">
+    <div className="flex flex-col gap-6 max-w-[1200px] mx-auto w-full p-4 sm:p-6 lg:p-8">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mt-2">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">System Audit Logs</h1>
           <p className="text-sm text-gray-500 mt-1">Track and monitor all activities across the platform</p>
         </div>
         <button 
           onClick={fetchLogs}
-          className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm"
+          className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm self-start sm:self-auto"
         >
           <History className="w-4 h-4" /> Refresh Logs
         </button>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mt-2">
-        <div className="p-4 border-b border-gray-100 flex gap-3">
-          <div className="relative max-w-md w-full flex-1">
+        <div className="p-4 border-b border-gray-100 flex flex-wrap gap-3">
+          <div className="relative max-w-md w-full flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input 
               type="text" 
@@ -71,7 +71,7 @@ export default function AuditLogsPage() {
               className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
             />
           </div>
-          <button className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors flex items-center gap-2">
+          <button className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors flex items-center gap-2 flex-shrink-0">
             <Filter className="w-4 h-4" /> Filters
           </button>
         </div>

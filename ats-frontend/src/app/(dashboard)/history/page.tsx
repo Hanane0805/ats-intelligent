@@ -44,15 +44,15 @@ export default function HistoryPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 max-w-[1000px] mx-auto w-full pb-10">
-      <div className="flex justify-between items-center mt-2">
+    <div className="flex flex-col gap-6 max-w-[1000px] mx-auto w-full p-4 sm:p-6 lg:p-8">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mt-2">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Recruitment History</h1>
           <p className="text-sm text-gray-500 mt-1">Timeline of all candidate status changes and activities</p>
         </div>
         <button 
           onClick={fetchHistory}
-          className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm"
+          className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm self-start sm:self-auto"
         >
           <History className="w-4 h-4" /> Refresh Timeline
         </button>
@@ -124,7 +124,7 @@ export default function HistoryPage() {
                   </div>
                   
                   <div className="bg-gray-50 rounded-xl border border-gray-100 p-5 hover:border-blue-200 transition-colors">
-                    <div className="flex justify-between items-start mb-3">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-3">
                       <div>
                         <h3 className="font-bold text-gray-900 text-base">
                           {log.candidatNom || 'Unknown Candidate'}
@@ -133,13 +133,13 @@ export default function HistoryPage() {
                           <FileText className="w-3.5 h-3.5" /> {log.posteTitre || 'Unknown Position'}
                         </p>
                       </div>
-                      <div className="text-right">
+                      <div className="sm:text-right">
                         <p className="text-sm font-bold text-gray-900">{dateObj.toLocaleDateString()}</p>
                         <p className="text-[11px] font-medium text-gray-400 mt-0.5">{dateObj.toLocaleTimeString()}</p>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3 bg-white p-3 rounded-lg border border-gray-100 mt-2">
+                    <div className="flex flex-wrap items-center gap-3 bg-white p-3 rounded-lg border border-gray-100 mt-2">
                       <span className={`inline-flex px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider border ${oldTheme}`}>
                         {log.ancienStatut || 'NO STATUS'}
                       </span>

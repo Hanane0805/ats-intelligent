@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Mail, ArrowRight, ChevronLeft, LayoutGrid, Activity, CheckCircle2 } from 'lucide-react';
+import { Mail, ArrowRight, ChevronLeft, LayoutGrid, Activity, CheckCircle2, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function ForgotPasswordPage() {
@@ -23,7 +23,7 @@ export default function ForgotPasswordPage() {
     <div className="min-h-screen flex text-foreground bg-background">
       
       {/* LEFT SIDE: BRANDING PANEL (Consistent) */}
-      <div className="hidden lg:flex flex-1 flex-col justify-center items-center bg-primary text-white p-16 space-y-16 relative overflow-hidden">
+      <div className="hidden lg:flex flex-1 flex-col justify-center items-center bg-primary text-white p-10 space-y-8 relative overflow-hidden">
         <div className="absolute top-10 left-10 flex items-center space-x-3 z-30">
           <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-emerald-500/10 text-emerald-500 p-2 border border-emerald-500/20">
             <LayoutGrid className="w-5 h-5" />
@@ -47,8 +47,13 @@ export default function ForgotPasswordPage() {
 
       {/* RIGHT SIDE: FORGOT PASSWORD FORM */}
       <div className="flex-1 flex flex-col justify-center items-center p-6 sm:p-16 bg-background">
-        <div className="w-full max-w-md space-y-6 bg-card p-8 sm:p-10 rounded-2xl border border-border shadow-sm">
-          
+        <div className="w-full max-w-md space-y-6 bg-card p-6 sm:p-10 rounded-2xl border border-border shadow-sm relative">
+          {isLoading && (
+            <div className="absolute inset-0 bg-card/75 backdrop-blur-[1px] z-50 rounded-2xl flex items-center justify-center">
+              <Loader2 className="animate-spin h-10 w-10 text-primary" />
+            </div>
+          )}
+
           <div className="mb-4">
             <Link href="/" className="inline-flex items-center text-xs text-muted-foreground hover:text-foreground transition-colors mb-4">
               <ChevronLeft className="w-3 h-3 mr-1" /> Back to login

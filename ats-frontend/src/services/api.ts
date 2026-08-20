@@ -212,6 +212,25 @@ export const api = {
     return data;
   },
 
+  registerCandidat: async (userData: {
+    nom: string;
+    prenom: string;
+    email: string;
+    password: string;
+  }): Promise<AuthResponse> => {
+    const data = await request<AuthResponse>('/api/auth/register/candidat', {
+      method: 'POST',
+      body: JSON.stringify({
+        nom: userData.nom,
+        prenom: userData.prenom,
+        email: userData.email,
+        motDePasse: userData.password,
+      }),
+    });
+    await auth.setSession(data);
+    return data;
+  },
+
   logout: async () => {
     await auth.clearSession();
     window.location.href = '/';
@@ -237,6 +256,9 @@ export const api = {
   // Candidatures
   getCandidatures: (): Promise<Candidature[]> =>
     request<Candidature[]>('/api/candidatures'),
+    
+  getCandidaturesByCandidat: (candidatId: number): Promise<Candidature[]> =>
+    request<Candidature[]>(`/api/candidatures/candidat/${candidatId}`),
 
   getCandidature: (id: number): Promise<Candidature> =>
     request<Candidature>(`/api/candidatures/${id}`),

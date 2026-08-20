@@ -401,4 +401,21 @@ public class CandidatureService {
                 .analyseIA(analyseResponse)
                 .build();
     }
+
+    /**
+     * Enregistre un changement de statut dans l'historique de recrutement.
+     */
+    private void saveHistory(Candidature candidature, String ancienStatut, String nouveauStatut) {
+        try {
+            HistoriqueRecrutementRequest req = new HistoriqueRecrutementRequest();
+            req.setCandidatureId(candidature.getId());
+            req.setAncienStatut(ancienStatut);
+            req.setNouveauStatut(nouveauStatut);
+            req.setCommentaire("Changement automatique : " + ancienStatut + " → " + nouveauStatut);
+            historiqueService.createHistorique(req);
+        } catch (Exception e) {
+            // Ne pas bloquer le flux principal si l'historique échoue
+            System.err.println("[Historique] Erreur lors de la sauvegarde : " + e.getMessage());
+        }
+    }
 }

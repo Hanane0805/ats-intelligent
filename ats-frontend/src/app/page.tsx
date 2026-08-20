@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Mail, Lock, Loader2, ArrowRight, LayoutGrid, Activity } from 'lucide-react';
+import { Mail, Lock, Loader2, ArrowRight, LayoutGrid, Activity, Briefcase } from 'lucide-react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -70,7 +70,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex text-foreground bg-background transition-colors duration-200">
       {/* LEFT SIDE: BRANDING PANEL */}
-      <div className="hidden lg:flex flex-1 flex-col justify-center items-center bg-primary text-white p-16 space-y-16 relative overflow-hidden">
+      <div className="hidden lg:flex flex-1 flex-col justify-center items-center bg-primary text-white p-10 space-y-8 relative overflow-hidden">
         <div className="absolute top-10 left-10 flex items-center space-x-3 z-30">
           <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-emerald-500/10 text-emerald-500 p-2 border border-emerald-500/20">
             <LayoutGrid className="w-5 h-5" />
@@ -131,17 +131,17 @@ export default function LoginPage() {
 
       {/* RIGHT SIDE: AUTH FORM */}
       <div className="flex-1 flex flex-col justify-center items-center p-6 sm:p-16 bg-background">
-        <div className="text-center space-y-1.5 mb-8 w-full max-w-md">
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Welcome back</h1>
-          <p className="text-sm text-muted-foreground">Sign in to your account to continue</p>
-        </div>
-
-        <div className="w-full max-w-md space-y-6 bg-card p-8 sm:p-10 rounded-2xl border border-border shadow-sm relative">
+        <div className="w-full max-w-md space-y-6 bg-card p-6 sm:p-10 rounded-2xl border border-border shadow-sm relative">
           {(isLoading || isGoogleLoading) && (
             <div className="absolute inset-0 bg-card/75 backdrop-blur-[1px] z-50 rounded-2xl flex items-center justify-center">
               <Loader2 className="animate-spin h-10 w-10 text-primary" />
             </div>
           )}
+
+          <div className="mb-2">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Welcome back</h1>
+            <p className="text-sm text-muted-foreground mt-1">Sign in to your account to continue</p>
+          </div>
 
           {error && (
             <div className="p-3.5 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs font-medium text-center">
@@ -230,6 +230,15 @@ export default function LoginPage() {
               Créer un compte
             </Link>
           </p>
+
+          <div className="relative pt-3 border-t border-border">
+            <p className="text-center text-xs text-muted-foreground">
+              <Link href="/offres" className="inline-flex items-center gap-1 text-primary hover:underline font-medium">
+                <Briefcase className="w-3 h-3" />
+                Voir les offres d&apos;emploi sans se connecter
+              </Link>
+            </p>
+          </div>
         </div>
       </div>
     </div>

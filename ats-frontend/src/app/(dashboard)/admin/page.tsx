@@ -17,7 +17,7 @@ export default function AdminDashboardPage() {
   }, []);
 
   return (
-    <div className="flex flex-col gap-6 max-w-[1200px] mx-auto w-full pb-10">
+    <div className="flex flex-col gap-6 max-w-[1200px] mx-auto w-full p-4 sm:p-6 lg:p-8">
       <div className="flex justify-between items-center mt-2">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>

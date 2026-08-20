@@ -68,7 +68,7 @@ export default function ProfilPage() {
   if (!user) return null;
 
   return (
-    <div className="flex flex-col gap-6 max-w-4xl mx-auto w-full pb-10">
+    <div className="flex flex-col gap-6 max-w-4xl mx-auto w-full p-4 sm:p-6 lg:p-8">
       <div className="flex justify-between items-center mt-2">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Mon Profil</h1>
@@ -106,7 +106,7 @@ export default function ProfilPage() {
 
         {/* Right Col: Form */}
         <div className="md:col-span-2">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 lg:p-8">
             <form onSubmit={handleSubmit} className="space-y-6">
               
               {error && (
@@ -123,7 +123,7 @@ export default function ProfilPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="text-sm font-bold text-gray-700">Prénom</label>
                   <div className="relative">

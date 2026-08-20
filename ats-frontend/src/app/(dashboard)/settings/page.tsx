@@ -58,8 +58,8 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 max-w-[1200px] mx-auto w-full pb-10">
-      <div className="flex justify-between items-center mt-2">
+    <div className="flex flex-col gap-6 max-w-[1200px] mx-auto w-full p-4 sm:p-6 lg:p-8">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mt-2">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">System Settings</h1>
           <p className="text-sm text-gray-500 mt-1">Configure ATS Intelligent platform settings</p>
@@ -67,7 +67,7 @@ export default function SettingsPage() {
         <button 
           onClick={handleSave}
           disabled={saving || loading}
-          className="bg-[#1e3a8a] hover:bg-blue-800 disabled:opacity-50 text-white px-5 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm"
+          className="bg-[#1e3a8a] hover:bg-blue-800 disabled:opacity-50 text-white px-5 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm self-start sm:self-auto"
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
           Save All Changes
@@ -111,7 +111,7 @@ export default function SettingsPage() {
         </div>
 
         {/* Configuration Area */}
-        <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+        <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 lg:p-8 min-w-0">
           <div className="flex items-center gap-4 mb-8">
             <div className="w-12 h-12 rounded-full bg-blue-50 text-[#1e3a8a] flex items-center justify-center">
               <Bot className="w-6 h-6" />
@@ -132,8 +132,8 @@ export default function SettingsPage() {
               {/* API Key */}
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">Gemini API Key</label>
-                <div className="flex items-center gap-3">
-                  <div className="relative flex-1">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  <div className="relative flex-1 min-w-0">
                     <input 
                       type={showKey ? "text" : "password"} 
                       value={apiKey}
@@ -143,7 +143,7 @@ export default function SettingsPage() {
                   </div>
                   <button 
                     onClick={() => setShowKey(!showKey)}
-                    className="px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm whitespace-nowrap flex items-center gap-2"
+                    className="px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm whitespace-nowrap flex items-center justify-center gap-2 flex-shrink-0"
                   >
                     <Eye className="w-4 h-4" /> {showKey ? 'Hide' : 'Reveal'}
                   </button>
