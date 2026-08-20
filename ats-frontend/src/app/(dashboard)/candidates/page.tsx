@@ -447,15 +447,31 @@ export default function CandidatesPage() {
                           <span className="text-xs text-gray-400 flex-shrink-0">{doc.dateUpload}</span>
                         </div>
                         <div className="flex items-center gap-1 flex-shrink-0 ml-2">
-                          <a
-                            href={`${API_BASE}/api/documents-cv/${doc.id}/download`}
-                            target="_blank"
-                            rel="noreferrer"
+                                                   <button
+                            onClick={() => {
+                              const token = localStorage.getItem('ats_token');
+                              fetch(`${API_BASE}/api/documents-cv/${doc.id}/download`, {
+                                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                              })
+                              .then(async r => {
+  if (!r.ok) {
+    let detail = '';
+    try { detail = await r.text(); } catch {}
+    throw new Error('HTTP ' + r.status + (detail ? ': ' + detail.substring(0, 100) : ''));
+  }
+  return r.blob();
+})
+                              .then(blob => { window.open(window.URL.createObjectURL(blob), '_blank'); })
+                              .catch(async err => {
+  let msg = err.message || 'Inconnu';
+  alert('Erreur: ' + msg);
+});
+                            }}
                             className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                             title="Voir le CV"
                           >
                             <Eye className="w-4 h-4" />
-                          </a>
+                          </button>
                           <button
                             onClick={() => handleDeleteCV(doc.id)}
                             className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"

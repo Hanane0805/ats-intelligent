@@ -13,7 +13,6 @@ interface UploadedFile {
   errorMsg?: string;
   candidateName?: string;
   texteBrut?: string;
-  nombreChunks?: number;
 }
 
 export default function AnalysisPage() {
@@ -39,8 +38,7 @@ export default function AnalysisPage() {
         status: 'completed', 
         progress: 100,
         candidateName: response.candidatNom,
-        texteBrut: response.texteBrut,
-        nombreChunks: response.nombreChunks
+        texteBrut: response.texteBrut
       } : f));
 
     } catch (err: any) {
@@ -206,7 +204,7 @@ export default function AnalysisPage() {
           </div>
         </div>
       )}
-      {/* RAG Analysis Modal */}
+      {/* CV Analysis Modal */}
       {selectedFile && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
@@ -217,7 +215,7 @@ export default function AnalysisPage() {
                   <FileText className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-gray-900">{selectedFile.candidateName || 'Unknown Candidate'}</h2>
+                  <h2 className="text-lg font-bold text-gray-900">{selectedFile.candidateName || 'Candidat inconnu'}</h2>
                   <p className="text-xs text-gray-500">{selectedFile.name}</p>
                 </div>
               </div>
@@ -232,15 +230,14 @@ export default function AnalysisPage() {
             {/* Body */}
             <div className="p-6 overflow-y-auto flex-1">
               
-              {/* RAG Info Card */}
+              {/* AI Extraction Info Card */}
               <div className="mb-6 bg-emerald-50 border border-emerald-100 rounded-xl p-4 flex items-start gap-3">
                 <CheckCircle2 className="w-5 h-5 text-emerald-600 mt-0.5 flex-shrink-0" />
                 <div>
-                  <h4 className="text-emerald-900 font-bold text-sm">Extraction RAG (Google Gemini)</h4>
+                  <h4 className="text-emerald-900 font-bold text-sm">Extraction IA (BERT)</h4>
                   <p className="text-emerald-700 text-xs mt-1 leading-relaxed">
-                    Ce CV a été découpé et indexé mathématiquement dans PostgreSQL (pgvector).
-                    <strong> {selectedFile.nombreChunks || 0} morceaux (chunks)</strong> ont été générés.
-                    Lors de l'analyse, seuls les morceaux les plus pertinents ont été envoyés à l'IA Google Gemini pour une précision maximale !
+                    Ce CV a été analysé par notre modèle BERT (sentence-transformers).
+                    Les informations clés (nom, email, compétences, expérience) ont été extraites automatiquement.
                   </p>
                 </div>
               </div>

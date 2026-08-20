@@ -4,7 +4,7 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
 export async function GET() {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/fiches-poste`, {
+    const res = await fetch(`${BACKEND_URL}/api/fiches-poste/public/jobs`, {
       cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
     });

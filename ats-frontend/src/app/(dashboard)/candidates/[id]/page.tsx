@@ -289,10 +289,20 @@ export default function CandidatDetailPage() {
                       <span className="text-xs font-medium text-gray-700 truncate">{doc.nomFichier}</span>
                     </div>
                     <div className="flex gap-1 flex-shrink-0 ml-1">
-                      <a href={`${API_BASE}/api/documents-cv/${doc.id}/download`} target="_blank" rel="noreferrer"
-                        className="p-1 text-gray-400 hover:text-blue-600 rounded transition-colors" title="Voir">
-                        <Eye className="w-3.5 h-3.5" />
-                      </a>
+                      <button onClick={() => {
+  const token = localStorage.getItem('ats_token');
+  fetch(`${API_BASE}/api/documents-cv/${doc.id}/download`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  .then(r => { if (!r.ok) throw new Error(); return r.blob(); })
+  .then(blob => {
+    const url = window.URL.createObjectURL(blob);
+    window.open(url, '_blank');
+  })
+  .catch(() => alert('Erreur lors de l\'ouverture du CV'));
+}} className="p-1 text-gray-400 hover:text-blue-600 rounded transition-colors" title="Voir">
+  <Eye className="w-3.5 h-3.5" />
+</button>
                       <button onClick={() => handleDeleteCV(doc.id)}
                         className="p-1 text-gray-400 hover:text-rose-600 rounded transition-colors" title="Supprimer">
                         <Trash2 className="w-3.5 h-3.5" />
