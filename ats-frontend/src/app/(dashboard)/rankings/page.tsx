@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Medal, Loader2, Trophy, ChevronDown, Wand2, X, AlertCircle } from 'lucide-react';
+import { Medal, Loader2, Trophy, ChevronDown, Wand2, X, AlertCircle, FileText, Bot } from 'lucide-react';
 import { api, Candidature } from '../../../services/api';
 
 const STATUS_OPTIONS = [
@@ -16,15 +16,22 @@ const getStatusDisplay = (statut: string) =>
   STATUS_OPTIONS.find(s => s.value === statut) || { label: statut, classes: 'bg-gray-50 text-gray-600 border-gray-200', dot: 'bg-gray-400' };
 
 const getScoreColor = (score: number) => {
-  if (score >= 75) return { bar: 'bg-emerald-500', text: 'text-emerald-600' };
-  if (score >= 50) return { bar: 'bg-amber-500', text: 'text-amber-600' };
-  return { bar: 'bg-rose-500', text: 'text-rose-600' };
+  if (score >= 75) return { bar: 'bg-emerald-500', text: 'text-emerald-600', bg: 'bg-emerald-50' };
+  if (score >= 50) return { bar: 'bg-amber-500', text: 'text-amber-600', bg: 'bg-amber-50' };
+  return { bar: 'bg-rose-500', text: 'text-rose-600', bg: 'bg-rose-50' };
+};
+
+const getScoreLabel = (score: number) => {
+  if (score >= 75) return 'Excellent';
+  if (score >= 55) return 'Bon';
+  if (score >= 35) return 'Moyen';
+  return 'Faible';
 };
 
 const getRecommendation = (score: number) => {
-  if (score >= 80) return { label: '⭐ Strongly Recommended', classes: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
-  if (score >= 60) return { label: '👍 Recommended', classes: 'bg-blue-50 text-blue-700 border-blue-200' };
-  if (score > 0)   return { label: '🤔 To Consider', classes: 'bg-gray-50 text-gray-600 border-gray-200' };
+  if (score >= 80) return { label: 'Strongly Recommended', classes: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+  if (score >= 60) return { label: 'Recommended', classes: 'bg-blue-50 text-blue-700 border-blue-200' };
+  if (score > 0)   return { label: 'To Consider', classes: 'bg-gray-50 text-gray-600 border-gray-200' };
   return { label: '—', classes: 'bg-gray-50 text-gray-400 border-gray-200' };
 };
 
@@ -37,6 +44,106 @@ const getMedalStyle = (rank: number) => {
   return { bg: '', text: '', ring: '' };
 };
 
+// ============================================================
+// Parser du texte de recommandation pour extraire les 2 scores
+// Format attendu (Java → recommandation) :
+//   [Compatibilite: {verdict} - {score}% | Qualite ATS: {score}%]
+//   Details: Semantique={s}%, Competences={s}%, Experience={s}%, Mots-cles={s}%.
+//   Competences correspondantes: skill1, skill2.
+//   Competences manquantes: skill3, skill4.
+//   Experience: X ans (requis: Y).
+//   Analyse IA: ...texte multiligne...
+// ============================================================
+interface ParsedAnalysis {
+  atsScore: number;
+  atsVerdict: string;
+  compatScore: number;
+  compatVerdict: string;
+  semantic: number;
+  skills: number;
+  experience: number;
+  keywords: number;
+  matchedSkills: string[];
+  missingSkills: string[];
+  cvExpYears: number;
+  reqExpYears: number;
+  llmAnalysis: string;
+}
+
+function parseRecommandation(text: string): ParsedAnalysis {
+  const empty: ParsedAnalysis = {
+    atsScore: 0, atsVerdict: '',
+    compatScore: 0, compatVerdict: '',
+    semantic: 0, skills: 0, experience: 0, keywords: 0,
+    matchedSkills: [], missingSkills: [],
+    cvExpYears: 0, reqExpYears: 0,
+    llmAnalysis: ''
+  };
+  if (!text) return empty;
+
+  // ---- Header : [Compatibilite: Moyen - Profil partiellement compatible - 36.4% | Qualite ATS: 100.0%] ----
+  // .+ (greedy) backtrace pour trouver le dernier " - NN.N%" avant le " |"
+  const headerMatch = text.match(/Compatibilite:\s*(.+)\s*-\s*([\d.]+)%\s*\|\s*Qualite ATS:\s*([\d.]+)%/);
+  if (!headerMatch) {
+    // Fallback: ancien format avec un seul score
+    const oldScore = text.match(/([\d.]+)%/);
+    if (oldScore) {
+      return { ...empty, compatScore: parseFloat(oldScore[1]), atsScore: 0, llmAnalysis: text };
+    }
+    return { ...empty, llmAnalysis: text };
+  }
+
+  const result: ParsedAnalysis = {
+    ...empty,
+    compatVerdict: headerMatch[1].trim(),
+    compatScore: parseFloat(headerMatch[2]),
+    atsScore: parseFloat(headerMatch[3]),
+  };
+
+  // ---- Details : Semantique=37.6%, Competences=8.9%, Experience=88.9%, Mots-cles=8.8% ----
+  const detailsMatch = text.match(/Semantique=([\d.]+)%.*?Competences=([\d.]+)%.*?Experience=([\d.]+)%.*?Mots-cles=([\d.]+)%/);
+  if (detailsMatch) {
+    result.semantic = parseFloat(detailsMatch[1]);
+    result.skills = parseFloat(detailsMatch[2]);
+    result.experience = parseFloat(detailsMatch[3]);
+    result.keywords = parseFloat(detailsMatch[4]);
+  }
+
+  // ---- Competences correspondantes : docker, api, git. ----
+  // Le lookahead s'arrete a ". " ou "Competences manquantes" ou "Analyse IA" ou fin de chaine
+  const matchedMatch = text.match(/Competences correspondantes\s*:\s*(.*?)(?=\s*\.\s|Competences manquantes|Analyse IA|$)/i);
+  if (matchedMatch && matchedMatch[1].trim()) {
+    result.matchedSkills = matchedMatch[1]
+      .split(',')
+      .map(s => s.trim().replace(/^\.+\s*/, ''))  // nettoyer les points residuels
+      .filter(s => s.length > 0);
+  }
+
+  // ---- Competences manquantes : java, spring, react. ----
+  const missingMatch = text.match(/Competences manquantes\s*:\s*(.*?)(?=\s*\.\s|Experience\s*:|Analyse IA|$)/i);
+  if (missingMatch && missingMatch[1].trim()) {
+    result.missingSkills = missingMatch[1]
+      .split(',')
+      .map(s => s.trim().replace(/^\.+\s*/, ''))
+      .filter(s => s.length > 0);
+  }
+
+  // ---- Experience : 4 ans (requis: 3) ----
+  const expMatch = text.match(/Experience\s*:\s*(\d+)\s*ans?\s*\(?requis?\s*:\s*(\d+)\)?/i);
+  if (expMatch) {
+    result.cvExpYears = parseInt(expMatch[1]);
+    result.reqExpYears = parseInt(expMatch[2]);
+  }
+
+  // ---- Analyse IA : ... (tout ce qui suit, multiligne) ----
+  const llmMatch = text.match(/Analyse IA\s*:\s*([\s\S]+)$/);
+  if (llmMatch) {
+    result.llmAnalysis = llmMatch[1].trim();
+  }
+
+  return result;
+}
+
 export default function RankingsPage() {
   const [candidatures, setCandidatures] = useState<Candidature[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,7 +151,6 @@ export default function RankingsPage() {
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [filterJob, setFilterJob] = useState<string>('all');
   
-  // AI Analysis states
   const [analyzingId, setAnalyzingId] = useState<number | null>(null);
   const [selectedCandidature, setSelectedCandidature] = useState<Candidature | null>(null);
 
@@ -100,16 +206,15 @@ export default function RankingsPage() {
     }
   };
 
-  // Unique job titles for filter
   const jobTitles = [...new Set(candidatures.map(c => c.fichePosteTitre).filter(Boolean))];
-
-  const filtered = filterJob === 'all'
-    ? candidatures
-    : candidatures.filter(c => c.fichePosteTitre === filterJob);
-
+  const filtered = filterJob === 'all' ? candidatures : candidatures.filter(c => c.fichePosteTitre === filterJob);
   const topThree = filtered.slice(0, 3);
-
   const getInitials = (nom: string) => nom ? nom.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : '??';
+
+  // Parser l'analyse sélectionnée
+  const parsed = selectedCandidature?.analyseIA?.recommandation
+    ? parseRecommandation(selectedCandidature.analyseIA.recommandation)
+    : null;
 
   return (
     <div className="flex flex-col gap-6 max-w-[1200px] mx-auto w-full p-4 sm:p-6 lg:p-8">
@@ -152,8 +257,8 @@ export default function RankingsPage() {
       {!loading && !error && filtered.length === 0 && (
         <div className="py-20 text-center bg-white rounded-xl border border-gray-100">
           <Trophy className="w-12 h-12 text-gray-200 mx-auto mb-3" />
-          <p className="text-gray-500 font-medium">Aucune candidature trouvée.</p>
-          <p className="text-gray-400 text-sm mt-1">Liez des candidats à des offres depuis la page <strong>Candidates</strong>.</p>
+          <p className="text-gray-500 font-medium">Aucune candidature trouvee.</p>
+          <p className="text-gray-400 text-sm mt-1">Liez des candidats a des offres depuis la page <strong>Candidates</strong>.</p>
         </div>
       )}
 
@@ -253,7 +358,6 @@ export default function RankingsPage() {
                           </span>
                         </td>
                         <td className="px-6 py-4">
-                          {/* Inline status changer */}
                           <div className="relative">
                             <select
                               value={c.statut}
@@ -316,12 +420,15 @@ export default function RankingsPage() {
         </>
       )}
 
-      {/* AI Analysis Modal */}
+      {/* ============================================================ */}
+      {/* AI Analysis Modal - 2 SCORES SEPARES                        */}
+      {/* ============================================================ */}
       {selectedCandidature && selectedCandidature.analyseIA && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+            
             {/* Header */}
-            <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50/80">
+            <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50/80 flex-shrink-0">
               <div className="flex items-center gap-3">
                 <div className="bg-[#1e3a8a]/10 text-[#1e3a8a] p-2 rounded-lg">
                   <Wand2 className="w-5 h-5" />
@@ -342,43 +449,159 @@ export default function RankingsPage() {
             </div>
             
             {/* Body */}
-            <div className="p-6 overflow-y-auto flex-1 bg-slate-50/50">
-              <div className="flex flex-col sm:flex-row gap-6 mb-6">
-                <div className="flex flex-col items-center justify-center bg-white border border-gray-100 rounded-xl p-6 shadow-sm sm:min-w-[140px]">
-                  <span className={`text-4xl font-black ${getScoreColor(selectedCandidature.analyseIA.score).text}`}>
-                    {Math.round(selectedCandidature.analyseIA.score)}%
-                  </span>
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">Match Score</span>
+            <div className="p-6 overflow-y-auto flex-1 space-y-5">
+
+              {/* ===== SCORE ATS - Qualite du CV ===== */}
+              <div className="bg-white rounded-xl border-2 border-blue-200 p-5 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-blue-600" />
+                    <h3 className="font-bold text-gray-900">Qualite ATS du CV</h3>
+                  </div>
+                  {parsed && parsed.atsScore > 0 ? (
+                    <div className="flex items-center gap-2">
+                      <span className={`text-2xl font-black ${getScoreColor(parsed.atsScore).text}`}>
+                        {Math.round(parsed.atsScore)}%
+                      </span>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase">{getScoreLabel(parsed.atsScore)}</span>
+                    </div>
+                  ) : (
+                    <span className="text-sm text-gray-400">Non disponible</span>
+                  )}
                 </div>
-                <div className="flex-1 bg-white border border-gray-100 rounded-xl p-5 shadow-sm flex flex-col justify-center">
-                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Recommandation</h4>
-                  <p className="text-gray-800 font-medium">
-                    {selectedCandidature.analyseIA.recommandation || 'Aucune recommandation générée.'}
-                  </p>
+                <p className="text-xs text-gray-500 mb-3">
+                  {parsed?.atsVerdict || 'Le CV est-il bien structure pour les filtres ATS ?'}
+                </p>
+                <div className="w-full bg-gray-100 rounded-full h-2">
+                  <div className={`h-2 rounded-full transition-all ${getScoreColor(parsed?.atsScore || 0).bar}`}
+                       style={{ width: `${parsed?.atsScore || 0}%` }} />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-emerald-50/50 border border-emerald-100 rounded-xl p-5">
-                  <h4 className="text-emerald-800 font-bold text-sm mb-3 flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-full bg-emerald-200 text-emerald-700 flex items-center justify-center text-xs">👍</span>
+              {/* ===== SCORE COMPATIBILITE - CV vs Offre ===== */}
+              <div className="bg-white rounded-xl border-2 border-purple-200 p-5 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Trophy className="w-5 h-5 text-purple-600" />
+                    <h3 className="font-bold text-gray-900">Compatibilite avec l'offre</h3>
+                  </div>
+                  {parsed && parsed.compatScore > 0 ? (
+                    <div className="flex items-center gap-2">
+                      <span className={`text-2xl font-black ${getScoreColor(parsed.compatScore).text}`}>
+                        {Math.round(parsed.compatScore)}%
+                      </span>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase">{getScoreLabel(parsed.compatScore)}</span>
+                    </div>
+                  ) : (
+                    <span className="text-sm text-gray-400">Non disponible</span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 mb-4">
+                  {parsed?.compatVerdict || 'Adequation du profil avec le poste'}
+                </p>
+
+                {/* Barres de détail */}
+                {parsed && parsed.compatScore > 0 && (
+                  <div className="space-y-3 mb-4">
+                    {[
+                      { label: 'Similarite semantique', value: parsed.semantic, color: 'bg-blue-500' },
+                      { label: 'Competences techniques', value: parsed.skills, color: 'bg-indigo-500' },
+                      { label: 'Experience', value: parsed.experience, color: 'bg-purple-500' },
+                      { label: 'Mots-cles', value: parsed.keywords, color: 'bg-pink-500' },
+                    ].map((item, i) => (
+                      <div key={i}>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-gray-600 font-medium">{item.label}</span>
+                          <span className="font-bold text-gray-800">{item.value}%</span>
+                        </div>
+                        <div className="w-full bg-gray-100 rounded-full h-1.5">
+                          <div className={`${item.color} h-1.5 rounded-full transition-all`} style={{ width: `${item.value}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Compétences matchées */}
+                {parsed && parsed.matchedSkills.length > 0 && (
+                  <div className="mb-3">
+                    <p className="text-xs font-bold text-emerald-700 mb-1.5">Competences correspondantes :</p>
+                    <div className="flex flex-wrap gap-1">
+                      {parsed.matchedSkills.map((s, i) => (
+                        <span key={i} className="text-[11px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-medium">{s}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Compétences manquantes */}
+                {parsed && parsed.missingSkills.length > 0 && (
+                  <div className="mb-3">
+                    <p className="text-xs font-bold text-rose-700 mb-1.5">Competences manquantes :</p>
+                    <div className="flex flex-wrap gap-1">
+                      {parsed.missingSkills.map((s, i) => (
+                        <span key={i} className="text-[11px] bg-rose-100 text-rose-800 px-2 py-0.5 rounded-full font-medium">{s}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Experience */}
+                {parsed && parsed.reqExpYears > 0 && (
+                  <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold ${
+                    parsed.cvExpYears >= parsed.reqExpYears ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                  }`}>
+                    {parsed.cvExpYears >= parsed.reqExpYears ? '✅' : '⚠️'}
+                    Experience : {parsed.cvExpYears} ans (requis : {parsed.reqExpYears})
+                  </div>
+                )}
+              </div>
+
+              {/* ===== ANALYSE LLM ===== */}
+              {parsed && parsed.llmAnalysis && (
+                <div className="bg-white rounded-xl border-2 border-amber-200 p-5 shadow-sm">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Bot className="w-5 h-5 text-amber-600" />
+                    <h3 className="font-bold text-gray-900">Analyse IA (Ollama)</h3>
+                  </div>
+                  <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                    {parsed.llmAnalysis}
+                  </p>
+                </div>
+              )}
+
+              {/* ===== POINTS FORTS / FAIBLESSES ===== */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-emerald-50/50 border border-emerald-100 rounded-xl p-4">
+                  <h4 className="text-emerald-800 font-bold text-sm mb-2 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-emerald-200 text-emerald-700 flex items-center justify-center text-xs">+</span>
                     Points Forts
                   </h4>
                   <div className="text-sm text-emerald-900/80 whitespace-pre-wrap leading-relaxed">
-                    {selectedCandidature.analyseIA.syntheseForces || 'Non renseigné.'}
+                    {selectedCandidature.analyseIA.syntheseForces || 'Non renseigne.'}
                   </div>
                 </div>
-
-                <div className="bg-rose-50/50 border border-rose-100 rounded-xl p-5">
-                  <h4 className="text-rose-800 font-bold text-sm mb-3 flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-full bg-rose-200 text-rose-700 flex items-center justify-center text-xs">⚠️</span>
-                    Points à vérifier
+                <div className="bg-rose-50/50 border border-rose-100 rounded-xl p-4">
+                  <h4 className="text-rose-800 font-bold text-sm mb-2 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-rose-200 text-rose-700 flex items-center justify-center text-xs">!</span>
+                    Points a verifier
                   </h4>
                   <div className="text-sm text-rose-900/80 whitespace-pre-wrap leading-relaxed">
-                    {selectedCandidature.analyseIA.syntheseFaiblesses || 'Non renseigné.'}
+                    {selectedCandidature.analyseIA.syntheseFaiblesses || 'Non renseigne.'}
                   </div>
                 </div>
               </div>
+
+            </div>
+            
+            {/* Footer */}
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end flex-shrink-0">
+              <button 
+                onClick={() => setSelectedCandidature(null)}
+                className="px-5 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors shadow-sm"
+              >
+                Fermer le rapport
+              </button>
             </div>
           </div>
         </div>
