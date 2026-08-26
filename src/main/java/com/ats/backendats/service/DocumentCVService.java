@@ -148,11 +148,13 @@ public class DocumentCVService {
         document = documentCVRepository.save(document);
         log.info("[CV] Document ID={} sauvegarde pour candidat ID={}", document.getId(), candidat.getId());
 
-        // Appeler Flask pour le score ATS
+        // Appeler Flask pour le score ATS + indexer le CV dans le pipeline RAG
         try {
             if (flaskAiService.isHealthy()) {
                 Map<String, Object> analyse = flaskAiService.analyzeCv(texteBrut);
                 log.info("[CV] Score ATS: {}% ({})", analyse.get("ats_score"), analyse.get("ats_method"));
+
+                indexerDansRag(texteBrut, candidat.getId());
             }
         } catch (Exception e) {
             log.warn("[CV] Erreur analyse Flask: {}", e.getMessage());
@@ -275,7 +277,31 @@ public class DocumentCVService {
         log.info("[CV] Document ID={} cree pour candidat ID={}, chemin={}",
                 document.getId(), candidat.getId(), document.getCheminStockage());
 
+        // 4. Indexer le CV dans le pipeline RAG (chunking + embeddings dans rag_cv_chunks)
+        //    Ne bloque jamais l'upload : erreurs loggees mais avalees.
+        indexerDansRag(document.getTexteBrut(), candidat.getId());
+
         return toResponse(document);
+    }
+
+    /**
+     * Indexe un texte de CV dans le pipeline RAG Python (chunking + embeddings).
+     * Volontairement tolerant aux pannes : n'importe quelle erreur ici est
+     * loggee en warning mais ne doit jamais faire echouer l'upload du CV.
+     */
+    private void indexerDansRag(String texteBrut, Long candidatId) {
+        if (texteBrut == null || texteBrut.isBlank() || candidatId == null) {
+            return;
+        }
+        try {
+            if (flaskAiService.isHealthy()) {
+                Map<String, Object> indexResult = flaskAiService.indexCv(texteBrut, candidatId.toString());
+                log.info("[CV] Indexation RAG - candidat ID={}, chunks stockes: {}",
+                        candidatId, indexResult.get("chunks_stored"));
+            }
+        } catch (Exception e) {
+            log.warn("[CV] Erreur indexation RAG pour candidat ID={}: {}", candidatId, e.getMessage());
+        }
     }
 
     /**

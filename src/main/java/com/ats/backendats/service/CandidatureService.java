@@ -144,17 +144,16 @@ public class CandidatureService {
         FichePoste poste = candidature.getFichePoste();
         if (poste == null) throw new BadRequestException("Aucune fiche de poste associee.");
 
-        // ===== VERIFICATION CV =====
         Long candidatId = candidature.getCandidat().getId();
-        log.info("[Analyse] Recherche CV pour candidat ID={}...", candidatId);
+        log.info("[Analyse RAG] Recherche CV pour candidat ID={}...", candidatId);
         List<DocumentCV> cvs = documentCVRepository.findByCandidatId(candidatId);
         if (cvs.isEmpty()) {
-            log.warn("[Analyse] Aucun CV pour candidat ID={}", candidatId);
+            log.warn("[Analyse RAG] Aucun CV pour candidat ID={}", candidatId);
             candidature.setStatut(StatutCandidature.EN_ATTENTE);
             candidatureRepository.save(candidature);
             throw new BadRequestException("Aucun CV trouve pour ce candidat (ID: " + candidatId + "). Veuillez d'abord televerser un CV.");
         }
-        // Prendre le CV le plus recent
+
         DocumentCV cvDoc = cvs.get(0);
         for (DocumentCV c : cvs) {
             if (c.getDateUpload() != null && cvDoc.getDateUpload() != null
@@ -165,87 +164,203 @@ public class CandidatureService {
 
         String cvText = cvDoc.getTexteBrut();
         if (cvText == null || cvText.isBlank()) {
-            log.warn("[Analyse] CV ID={} vide pour candidat ID={}", cvDoc.getId(), candidatId);
+            log.warn("[Analyse RAG] CV ID={} vide pour candidat ID={}", cvDoc.getId(), candidatId);
             candidature.setStatut(StatutCandidature.EN_ATTENTE);
             candidatureRepository.save(candidature);
             throw new BadRequestException("Le CV de ce candidat est vide ou illisible (Document ID: " + cvDoc.getId() + "). Veuillez televerser un CV valide.");
         }
-        log.info("[Analyse] CV trouve: ID={}, {} caracteres", cvDoc.getId(), cvText.length());
+        log.info("[Analyse RAG] CV trouve: ID={}, {} caracteres", cvDoc.getId(), cvText.length());
 
-        // Construire la description du poste
         String jobDescription = poste.getTitre();
         if (poste.getDescription() != null) {
             jobDescription += " " + poste.getDescription();
         }
 
         try {
-            // ===== APPEL AU SERVICE FLASK IA =====
-            Map<String, Object> result = flaskAiService.fullAnalysis(cvText, jobDescription);
+            Map<String, Object> result = flaskAiService.analyzeRag(
+                    cvText, jobDescription, String.valueOf(candidatId)
+            );
 
-            // Extraire le score ATS
-            @SuppressWarnings("unchecked")
-            Map<String, Object> analyseAts = (Map<String, Object>) result.get("analyse_ats");
-            double atsScore = ((Number) analyseAts.get("ats_score")).doubleValue();
+            // ================================================================
+            // SCORE 1 : Qualite ATS du CV
+            // ================================================================
+            double atsScore = 0.0;
+            String atsVerdict = "Non disponible";
+            String atsMethod = "N/A";
+            double atsHeuristicScore = 0.0;
+            List<String> pointsForts = new ArrayList<>();
+            List<String> aAmeliorer = new ArrayList<>();
 
-            // Extraire les points forts et faiblesses
-            @SuppressWarnings("unchecked")
-            List<String> pointsForts = (List<String>) analyseAts.get("points_forts");
-            @SuppressWarnings("unchecked")
-            List<String> aAmeliorer = (List<String>) analyseAts.get("a_ameliorer");
-            String atsExplication = (String) analyseAts.get("explication");
-
-            // Extraire le score de compatibilite si disponible
-            Double compatScore = null;
-            String recommandationLisible = null;
-            if (result.containsKey("compatibilite")) {
+            Object atsObj = result.get("ats_score");
+            if (atsObj instanceof Map) {
                 @SuppressWarnings("unchecked")
-                Map<String, Object> compat = (Map<String, Object>) result.get("compatibilite");
-                compatScore = ((Number) compat.get("total_score")).doubleValue();
+                Map<String, Object> ats = (Map<String, Object>) atsObj;
+                atsScore = parseDouble(ats.get("score"), 0.0);
+                atsVerdict = (String) ats.getOrDefault("verdict", "Non disponible");
+                atsMethod = (String) ats.getOrDefault("method", "N/A");
+                atsHeuristicScore = parseDouble(ats.get("heuristic_score"), 0.0);
 
-                // Utiliser la recommandation lisible de Flask si disponible
-                recommandationLisible = (String) compat.get("recommandation");
-                if (recommandationLisible == null || recommandationLisible.isBlank()) {
-                    // Fallback: generer une recommandation ici si Flask ne l'a pas fait
+                if (ats.get("points_forts") instanceof List) {
                     @SuppressWarnings("unchecked")
-                    List<String> matchedSkills = (List<String>) compat.getOrDefault("matched_skills", Collections.emptyList());
+                    List<Object> raw = (List<Object>) ats.get("points_forts");
+                    for (Object o : raw) pointsForts.add(String.valueOf(o));
+                }
+                if (ats.get("a_ameliorer") instanceof List) {
                     @SuppressWarnings("unchecked")
-                    List<String> missingSkills = (List<String>) compat.getOrDefault("missing_skills", Collections.emptyList());
-                    recommandationLisible = buildRecommendation(
-                            compatScore,
-                            (Double) compat.getOrDefault("semantic_similarity", 0.0),
-                            (Double) compat.getOrDefault("skill_match", 0.0),
-                            (Double) compat.getOrDefault("experience_match", 0.0),
-                            ((Number) compat.getOrDefault("cv_experience_years", 0)).intValue(),
-                            ((Number) compat.getOrDefault("required_experience_years", 0)).intValue(),
-                            matchedSkills,
-                            missingSkills
-                    );
+                    List<Object> raw = (List<Object>) ats.get("a_ameliorer");
+                    for (Object o : raw) aAmeliorer.add(String.valueOf(o));
                 }
             }
 
-            // Construire les syntheses
-            String forcesText = pointsForts != null && !pointsForts.isEmpty()
+            // ================================================================
+            // SCORE 2 : Compatibilite CV <-> Offre
+            // ================================================================
+            double compatScore = 0.0;
+            String compatVerdict = "Non disponible";
+            double semanticSim = 0.0;
+            double skillMatch = 0.0;
+            double expMatch = 0.0;
+            double kwMatch = 0.0;
+            int cvExpYears = 0;
+            int reqExpYears = 0;
+            List<String> matchedSkills = new ArrayList<>();
+            List<String> missingSkills = new ArrayList<>();
+            String compatRecommandation = "";
+
+            Object compatObj = result.get("compatibility_score");
+            if (compatObj instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> compat = (Map<String, Object>) compatObj;
+                compatScore = parseDouble(compat.get("score"), 0.0);
+                compatVerdict = (String) compat.getOrDefault("verdict", "Non disponible");
+                semanticSim = parseDouble(compat.get("semantic_similarity"), 0.0);
+                skillMatch = parseDouble(compat.get("skill_match"), 0.0);
+                expMatch = parseDouble(compat.get("experience_match"), 0.0);
+                kwMatch = parseDouble(compat.get("keyword_match"), 0.0);
+                cvExpYears = (int) parseDouble(compat.get("cv_experience_years"), 0.0);
+                reqExpYears = (int) parseDouble(compat.get("required_experience_years"), 0.0);
+
+                if (compat.get("matched_skills") instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<Object> raw = (List<Object>) compat.get("matched_skills");
+                    for (Object o : raw) matchedSkills.add(String.valueOf(o));
+                }
+                if (compat.get("missing_skills") instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<Object> raw = (List<Object>) compat.get("missing_skills");
+                    for (Object o : raw) missingSkills.add(String.valueOf(o));
+                }
+                compatRecommandation = (String) compat.getOrDefault("recommandation", "");
+            }
+
+            // ================================================================
+            // ANALYSE LLM
+            // ================================================================
+            boolean ollamaAvailable = Boolean.TRUE.equals(result.get("ollama_available"));
+            Object llmAnalysisObj = result.get("llm_analysis");
+            String llmAnalysis = null;
+            boolean llmAvailable = ollamaAvailable && llmAnalysisObj != null;
+
+            if (llmAnalysisObj instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> llmParsed = (Map<String, Object>) llmAnalysisObj;
+
+                if (llmParsed.get("points_forts") instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<Object> raw = (List<Object>) llmParsed.get("points_forts");
+                    for (Object o : raw) pointsForts.add(String.valueOf(o));
+                }
+                if (llmParsed.get("faiblesses") instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<Object> raw = (List<Object>) llmParsed.get("faiblesses");
+                    for (Object o : raw) aAmeliorer.add(String.valueOf(o));
+                }
+                if (llmParsed.get("recommandations") instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<Object> raw = (List<Object>) llmParsed.get("recommandations");
+                    for (Object o : raw) aAmeliorer.add(String.valueOf(o));
+                }
+                llmAnalysis = (String) llmParsed.get("analyse_detaillee");
+                if (llmAnalysis == null) {
+                    llmAnalysis = llmParsed.toString();
+                }
+            } else if (llmAnalysisObj instanceof String) {
+                llmAnalysis = (String) llmAnalysisObj;
+                try {
+                    com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> llmParsed = om.readValue(llmAnalysis, Map.class);
+                    if (llmParsed.get("points_forts") instanceof List) {
+                        @SuppressWarnings("unchecked")
+                        List<String> pForts = (List<String>) llmParsed.get("points_forts");
+                        if (!pForts.isEmpty()) pointsForts = pForts;
+                    }
+                    if (llmParsed.get("faiblesses") instanceof List) {
+                        @SuppressWarnings("unchecked")
+                        List<String> pFaibles = (List<String>) llmParsed.get("faiblesses");
+                        aAmeliorer.addAll(pFaibles);
+                    }
+                    if (llmParsed.get("recommandations") instanceof List) {
+                        @SuppressWarnings("unchecked")
+                        List<String> pReco = (List<String>) llmParsed.get("recommandations");
+                        aAmeliorer.addAll(pReco);
+                    }
+                    String detail = (String) llmParsed.get("analyse_detaillee");
+                    if (detail != null) llmAnalysis = detail;
+                } catch (Exception parseEx) {
+                    log.debug("[Analyse RAG] LLM response non-JSON, texte brut utilise");
+                }
+            }
+
+            // ================================================================
+            // CONSTRUIRE LA RECOMMANDATION
+            // ================================================================
+            String forcesText = !pointsForts.isEmpty()
                     ? String.join(", ", pointsForts)
-                    : "Analyse en cours";
-            String faiblessesText = aAmeliorer != null && !aAmeliorer.isEmpty()
+                    : "Aucun point fort identifie";
+
+            String faiblessesText = !aAmeliorer.isEmpty()
                     ? String.join(", ", aAmeliorer)
                     : "Aucune faiblesse majeure identifiee";
 
-            // Score final
-            double finalScore = (compatScore != null) ? compatScore : atsScore;
-
-            // Recommandation finale
             String recommandationFinale;
-            if (recommandationLisible != null) {
-                recommandationFinale = recommandationLisible;
-            } else {
-                // Fallback si pas de compatibilite calculee (pas d'offre fournie)
-                recommandationFinale = buildAtsOnlyRecommendation(atsScore, pointsForts, aAmeliorer, atsExplication);
+
+            recommandationFinale = String.format(
+                    "[Compatibilite: %s - %.1f%% | Qualite ATS: %.1f%%] ",
+                    compatVerdict, compatScore, atsScore
+            );
+
+            if (compatScore > 0) {
+                recommandationFinale += String.format(
+                        "Details: Semantique=%.1f%%, Competences=%.1f%%, Experience=%.1f%%, Mots-cles=%.1f%%. ",
+                        semanticSim, skillMatch, expMatch, kwMatch
+                );
             }
 
-            // Sauvegarder l'analyse
+            if (!matchedSkills.isEmpty()) {
+                String skills = String.join(", ", matchedSkills.subList(0, Math.min(8, matchedSkills.size())));
+                recommandationFinale += "Competences correspondantes: " + skills + ". ";
+            }
+            if (!missingSkills.isEmpty()) {
+                String missing = String.join(", ", missingSkills.subList(0, Math.min(6, missingSkills.size())));
+                recommandationFinale += "Competences manquantes: " + missing + ". ";
+            }
+
+            if (reqExpYears > 0) {
+                recommandationFinale += String.format("Experience: %d ans (requis: %d). ", cvExpYears, reqExpYears);
+            }
+
+            if (llmAnalysis != null && !llmAnalysis.isBlank()) {
+                recommandationFinale += "Analyse IA: " + llmAnalysis;
+            } else {
+                recommandationFinale += "Analyse IA non disponible (Ollama " + (ollamaAvailable ? "echec" : "indisponible") + ").";
+            }
+
+            // ================================================================
+            // SAUVEGARDER
+            // ================================================================
             AnalyseIA analyse = new AnalyseIA();
-            analyse.setScore(finalScore);
+            analyse.setScore(compatScore > 0 ? compatScore : atsScore);
             analyse.setSyntheseForces(forcesText);
             analyse.setSyntheseFaiblesses(faiblessesText);
             analyse.setRecommandation(recommandationFinale);
@@ -253,33 +368,44 @@ public class CandidatureService {
             analyse = analyseIARepository.save(analyse);
 
             candidature.setAnalyseIA(analyse);
-            candidature.setScoreCompatibilite(finalScore / 100.0);
+            candidature.setScoreCompatibilite((compatScore > 0 ? compatScore : atsScore) / 100.0);
             candidature.setStatut(StatutCandidature.EN_ATTENTE);
             candidature = candidatureRepository.save(candidature);
 
             saveHistory(candidature, "EN_ANALYSE", "EN_ATTENTE");
-            log.info("[Analyse] Terminee pour candidature ID={} - Score: {}%", candidatureId, finalScore);
+
+            log.info("[Analyse RAG] Candidature ID={} | ATS: {}% ({}) | Compatibilite: {}% ({}) | LLM: {} | Ollama: {}",
+                    candidatureId, atsScore, atsVerdict, compatScore, compatVerdict,
+                    llmAvailable ? "OUI" : "NON",
+                    ollamaAvailable ? "OUI" : "NON");
+
             return toResponse(candidature);
 
         } catch (BadRequestException e) {
             throw e;
         } catch (Exception e) {
-            log.error("[Analyse] Erreur IA : {}", e.getMessage(), e);
+            log.error("[Analyse RAG] Erreur : {}", e.getMessage(), e);
             candidature.setStatut(StatutCandidature.EN_ATTENTE);
             candidatureRepository.save(candidature);
             throw new BadRequestException("L'analyse IA a echoue : " + e.getMessage());
         }
     }
 
-    /**
-     * Genere une recommandation lisible quand on a le score de compatibilite.
-     */
+    private double parseDouble(Object value, double defaultValue) {
+        if (value == null) return defaultValue;
+        if (value instanceof Number) return ((Number) value).doubleValue();
+        try {
+            return Double.parseDouble(value.toString());
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
+
     private String buildRecommendation(double totalScore, double semantic, double skillMatch,
                                        double expMatch, int cvExp, int requiredExp,
                                        List<String> matchedSkills, List<String> missingSkills) {
         StringBuilder sb = new StringBuilder();
 
-        // Appreciation globale
         if (totalScore >= 75) {
             sb.append(String.format("Excellent profil ! Le candidat obtient un score de compatibilite de %.1f%%, " +
                     "ce qui indique une tres bonne adequation avec le poste.", totalScore));
@@ -294,7 +420,6 @@ public class CandidatureService {
                     "Des ecarts significatifs existent par rapport aux exigences.", totalScore));
         }
 
-        // Competences
         if (matchedSkills != null && !matchedSkills.isEmpty()) {
             String skills = String.join(", ", matchedSkills.subList(0, Math.min(8, matchedSkills.size())));
             sb.append(" Competences correspondantes : ").append(skills).append(".");
@@ -304,7 +429,6 @@ public class CandidatureService {
             sb.append(" Competences manquantes : ").append(missing).append(".");
         }
 
-        // Experience
         if (requiredExp > 0) {
             if (cvExp >= requiredExp) {
                 sb.append(String.format(" Experience conforme (%d ans vs %d requis).", cvExp, requiredExp));
@@ -313,7 +437,6 @@ public class CandidatureService {
             }
         }
 
-        // Recommandation
         if (totalScore >= 75) {
             sb.append(" Ce candidat merite une entrevue approfondie.");
         } else if (totalScore >= 55) {
@@ -325,9 +448,6 @@ public class CandidatureService {
         return sb.toString();
     }
 
-    /**
-     * Genere une recommandation quand on a seulement le score ATS (pas d'offre).
-     */
     private String buildAtsOnlyRecommendation(double atsScore, List<String> pointsForts,
                                               List<String> aAmeliorer, String atsExplication) {
         StringBuilder sb = new StringBuilder();

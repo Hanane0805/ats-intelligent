@@ -185,4 +185,99 @@ public class FlaskAiService {
 
         return result;
     }
+
+
+
+    // ============================================================
+    // METHODES RAG (a ajouter)
+    // ============================================================
+
+    /**
+     * Verifie l'etat de tous les composants RAG.
+     * Appelle GET /api/rag/health
+     */
+    public Map<String, Object> ragHealth() {
+        try {
+            String url = flaskUrl + "/api/rag/health";
+            @SuppressWarnings("unchecked")
+            Map<String, Object> response = restTemplate.getForObject(url, Map.class);
+            return response != null ? response : new HashMap<>();
+        } catch (Exception e) {
+            log.error("Erreur RAG health: {}", e.getMessage());
+            Map<String, Object> fallback = new HashMap<>();
+            fallback.put("status", "error");
+            fallback.put("error", e.getMessage());
+            return fallback;
+        }
+    }
+
+    /**
+     * Indexe un CV dans le pipeline RAG (chunking + embeddings + pgvector).
+     * Appelle POST /api/rag/index_cv
+     */
+    public Map<String, Object> indexCv(String cvText, String candidatId) {
+        try {
+            String url = flaskUrl + "/api/rag/index_cv";
+
+            Map<String, String> request = new HashMap<>();
+            request.put("cv_text", cvText);
+            request.put("candidat_id", candidatId);
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> response = restTemplate.postForObject(url, request, Map.class);
+
+            if (response == null) {
+                throw new RuntimeException("Reponse null du service Flask");
+            }
+
+            log.info("CV indexe RAG - candidat: {}, chunks: {}",
+                    response.get("candidat_id"), response.get("chunks_stored"));
+
+            return response;
+
+        } catch (Exception e) {
+            log.error("Erreur indexation RAG: {}", e.getMessage());
+            throw new RuntimeException("Erreur indexation RAG: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Pipeline RAG complet : BERT + Chunking + Retrieval + LLM + Score combine.
+     * Appelle POST /api/rag/analyze_rag
+     *
+     * @param cvText         texte du CV
+     * @param jobDescription description du poste (optionnel)
+     * @param candidatId     identifiant du candidat
+     * @return Map avec combined_score, verdict, llm_analysis, etc.
+     */
+    public Map<String, Object> analyzeRag(String cvText, String jobDescription, String candidatId) {
+        try {
+            String url = flaskUrl + "/api/rag/analyze_rag";
+
+            Map<String, String> request = new HashMap<>();
+            request.put("cv_text", cvText);
+            if (jobDescription != null && !jobDescription.isBlank()) {
+                request.put("job_description", jobDescription);
+            }
+            if (candidatId != null && !candidatId.isBlank()) {
+                request.put("candidat_id", candidatId);
+            }
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> response = restTemplate.postForObject(url, request, Map.class);
+
+            if (response == null) {
+                throw new RuntimeException("Reponse null du service Flask");
+            }
+
+            log.info("Analyse RAG - Score combine: {}%, Verdict: {}",
+                    response.get("combined_score"), response.get("verdict"));
+
+            return response;
+
+        } catch (Exception e) {
+            log.error("Erreur analyse RAG: {}", e.getMessage());
+            throw new RuntimeException("Erreur analyse RAG: " + e.getMessage());
+        }
+    }
 }
